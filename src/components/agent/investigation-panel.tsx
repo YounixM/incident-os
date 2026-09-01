@@ -213,7 +213,7 @@ export function InvestigationPanel() {
         </section>
       </div>
 
-      <ApprovalDialog pendingAction={pendingAction} approved={approved} variant="column" />
+      <ApprovalDialog pendingAction={pendingAction} approved={approved} />
 
       <footer className="flex shrink-0 flex-col gap-1.5 border-t border-border p-2">
         <Button

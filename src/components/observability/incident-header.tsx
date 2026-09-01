@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, Bot } from "lucide-react";
 import { PRIMARY_INCIDENT_ID } from "@/lib/constants";
-import { ApprovalDialog } from "@/components/agent/approval-dialog";
 import { Button } from "@/components/ui/button";
 import { SeverityBadge, StatusDot } from "@/components/layout/status-indicator";
 import { formatUtcHm, splitIncidentTitle } from "@/components/observability/format";
@@ -21,8 +20,6 @@ export function IncidentHeader({ incidentId }: { incidentId: string }) {
   const selectIncident = useIncidentStore((s) => s.selectIncident);
   const storeStatus = useIncidentStore((s) => s.incidentStatus);
   const agentStatus = useIncidentStore((s) => s.agent.status);
-  const pendingAction = useIncidentStore((s) => s.approval.pendingAction);
-  const approved = useIncidentStore((s) => s.approval.approved);
   const incident = snapshot.incidents.find((row) => row.id === incidentId);
 
   useEffect(() => {
@@ -111,10 +108,6 @@ export function IncidentHeader({ incidentId }: { incidentId: string }) {
           </p>
         )}
       </div>
-
-      {incident.id === PRIMARY_INCIDENT_ID ? (
-        <ApprovalDialog pendingAction={pendingAction} approved={approved} variant="banner" />
-      ) : null}
     </section>
   );
 }
