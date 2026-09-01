@@ -29,13 +29,7 @@ export function ApprovalDialog({
         id="approval-dialog"
         className="bg-neutral-950 text-neutral-100 ring-white/10"
         overlayClassName="bg-black/50 backdrop-blur-none supports-backdrop-filter:backdrop-blur-none"
-        onEscapeKeyDown={(event) => {
-          event.preventDefault();
-        }}
-        onPointerDownOutside={(event) => {
-          event.preventDefault();
-        }}
-        onInteractOutside={(event) => {
+        onEscapeKeyDown={(event: KeyboardEvent) => {
           event.preventDefault();
         }}
       >
