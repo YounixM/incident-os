@@ -15,6 +15,7 @@ Judges should use **ChatGPT’s desktop built-in browser** ([site tools](https:/
 - Not available in Enterprise or Edu workspaces.
 - Stay on the incident page. Tools belong to that page; navigating away unregisters them.
 - Address bar → **Site tools** → **Available site tools** (11 tools: 8 read, 3 write).
+- Read-only tools never trigger a write. Prefer site tools over clicking the dashboards.
 
 Alternatively: **Chrome 149+** with `chrome://flags/#enable-webmcp-testing`.
 

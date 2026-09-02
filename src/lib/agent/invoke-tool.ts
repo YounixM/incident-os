@@ -95,19 +95,19 @@ function proposalOutcome(
     case "approved":
       return {
         ok: true,
-        summary: `Human approved rollback of ${service} to ${targetVersion}. Call rollback_deployment now with the same service and targetVersion.`,
-        data: { ...data, status: "approved", nextTool: "rollback_deployment" },
+        summary: `Human approved rollback of ${service} to ${targetVersion}.`,
+        data: { ...data, status: "approved" },
       };
     case "rejected":
       return {
         ok: true,
-        summary: `Human rejected the rollback of ${service} to ${targetVersion}. Do not call rollback_deployment.`,
+        summary: `Human rejected the rollback of ${service} to ${targetVersion}.`,
         data: { ...data, status: "rejected" },
       };
     case "pending":
       return {
         ok: true,
-        summary: `Still waiting for Approve on the page for ${service} → ${targetVersion}. When the human approves, call rollback_deployment. Poll get_incident until approval.approved is true.`,
+        summary: `Still waiting for human approval for ${service} → ${targetVersion}.`,
         data: { ...data, status: "pending_approval" },
       };
     default: {

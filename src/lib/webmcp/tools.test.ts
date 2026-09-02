@@ -238,9 +238,31 @@ describe("incidentOsTools", () => {
       approval: {
         pending: true,
         approved: true,
-        next: expect.stringMatching(/rollback_deployment/),
+        service: PRIMARY_SERVICE_ID,
+        targetVersion: ROLLBACK_VERSION,
       },
     });
-    expect(approved.summary).toMatch(/call rollback_deployment now/i);
+    expect(approved.summary).toMatch(/is approved/i);
+    expect(approved.summary).not.toMatch(/call rollback_deployment/i);
+    expect((approved.data as { approval: Record<string, unknown> }).approval).not.toHaveProperty(
+      "next",
+    );
+  });
+
+  it("tool descriptions do not instruct calling other tools", () => {
+    const tools = Object.values(incidentOsTools);
+    const names = tools.map((tool) => tool.name);
+    for (const tool of tools) {
+      for (const other of names) {
+        if (other === tool.name) {
+          continue;
+        }
+        expect(tool.description).not.toMatch(new RegExp(`\\b${other}\\b`));
+      }
+      expect(tool.description).not.toMatch(/\bimmediately\b/i);
+    }
+    expect(incidentOsTools.get_incident.readOnly).toBe(true);
+    expect(incidentOsTools.search_logs.untrustedContent).toBe(true);
+    expect(incidentOsTools.rollback_deployment.readOnly).toBe(false);
   });
 });

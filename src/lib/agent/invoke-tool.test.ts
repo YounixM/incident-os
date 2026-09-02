@@ -96,7 +96,7 @@ describe("invokeIncidentTool", () => {
     );
   });
 
-  it("waits for Approve on external propose_rollback, then tells the host to call rollback_deployment", async () => {
+  it("waits for Approve on external propose_rollback, then returns the human decision", async () => {
     const work = executeIncidentTool("propose_rollback", {
       service: PRIMARY_SERVICE_ID,
       targetVersion: ROLLBACK_VERSION,
@@ -113,11 +113,12 @@ describe("invokeIncidentTool", () => {
     expect(result.ok).toBe(true);
     expect(result.data).toMatchObject({
       status: "approved",
-      nextTool: "rollback_deployment",
       service: PRIMARY_SERVICE_ID,
       targetVersion: ROLLBACK_VERSION,
     });
-    expect(result.summary).toMatch(/Call rollback_deployment now/i);
+    expect(result.summary).toMatch(/Human approved rollback/i);
+    expect(result.summary).not.toMatch(/call rollback_deployment/i);
+    expect(result.data).not.toHaveProperty("nextTool");
     expect(useIncidentStore.getState().approval.approved).toBe(true);
   });
 

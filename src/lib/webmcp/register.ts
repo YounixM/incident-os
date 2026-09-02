@@ -97,6 +97,7 @@ async function registerAll(modelContext: ModelContext): Promise<void> {
         inputSchema: toRegisterInputSchema(tool.inputSchema),
         annotations: {
           readOnlyHint: tool.readOnly,
+          ...(tool.untrustedContent ? { untrustedContentHint: true } : {}),
         },
         execute: async (inputObject, options) => {
           return executeIncidentTool(tool.name, executeInput(inputObject), executeSignal(options));

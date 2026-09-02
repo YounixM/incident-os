@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { incidentOsTools } from "@/lib/webmcp/tools";
 
 const METRIC_NAMES = [
   "error_rate",
@@ -14,20 +15,19 @@ const iso = z.string().min(1).describe("ISO-8601 UTC timestamp");
 
 export const llmTools = {
   get_incident: tool({
-    description:
-      "Retrieve incident context: severity, service, status, current KPIs, and rollback approval. If approval.approved is true, call rollback_deployment immediately.",
+    description: incidentOsTools.get_incident.description,
     inputSchema: z.object({
       incidentId: z.string().min(1).describe("Incident id, e.g. checkout-api-error-rate"),
     }),
   }),
   get_service: tool({
-    description: "Retrieve service metadata, dependency list, and current health.",
+    description: incidentOsTools.get_service.description,
     inputSchema: z.object({
       service: z.string().min(1).describe("Service id, e.g. checkout-api"),
     }),
   }),
   query_metrics: tool({
-    description: "Query a time series for error_rate, request_rate, latency, or db_latency.",
+    description: incidentOsTools.query_metrics.description,
     inputSchema: z.object({
       service: z.string().min(1),
       metric: z.enum(METRIC_NAMES),
@@ -36,7 +36,7 @@ export const llmTools = {
     }),
   }),
   search_logs: tool({
-    description: "Search service logs by time range and optional substring.",
+    description: incidentOsTools.search_logs.description,
     inputSchema: z.object({
       service: z.string().min(1),
       query: z.string().optional(),
@@ -47,7 +47,7 @@ export const llmTools = {
     }),
   }),
   search_traces: tool({
-    description: "Search traces for a service, optionally filtered by ok/error status.",
+    description: incidentOsTools.search_traces.description,
     inputSchema: z.object({
       service: z.string().min(1),
       status: z.enum(["ok", "error"]).optional(),
@@ -57,20 +57,20 @@ export const llmTools = {
     }),
   }),
   get_trace: tool({
-    description: "Fetch a full trace and span hierarchy by id.",
+    description: incidentOsTools.get_trace.description,
     inputSchema: z.object({
       traceId: z.string().min(1),
     }),
   }),
   get_deployments: tool({
-    description: "List recent deployments for a service, newest first.",
+    description: incidentOsTools.get_deployments.description,
     inputSchema: z.object({
       service: z.string().min(1),
       limit: z.number().int().min(0).optional(),
     }),
   }),
   compare_periods: tool({
-    description: "Compare baseline vs incident-window averages for a metric.",
+    description: incidentOsTools.compare_periods.description,
     inputSchema: z.object({
       service: z.string().min(1),
       metric: z.enum(METRIC_NAMES),
@@ -81,8 +81,7 @@ export const llmTools = {
     }),
   }),
   propose_rollback: tool({
-    description:
-      "Open a human approval dialog and wait until Approve or Cancel. Does not mutate telemetry. When status is approved, immediately call rollback_deployment with the same service and targetVersion.",
+    description: incidentOsTools.propose_rollback.description,
     inputSchema: z.object({
       service: z.string().min(1),
       targetVersion: z.string().min(1),
@@ -90,15 +89,14 @@ export const llmTools = {
     }),
   }),
   rollback_deployment: tool({
-    description:
-      "Roll a service back to a prior version. Call immediately after propose_rollback returns approved, or when get_incident.approval.approved is true.",
+    description: incidentOsTools.rollback_deployment.description,
     inputSchema: z.object({
       service: z.string().min(1),
       targetVersion: z.string().min(1),
     }),
   }),
   add_incident_note: tool({
-    description: "Append a note to an incident timeline.",
+    description: incidentOsTools.add_incident_note.description,
     inputSchema: z.object({
       incidentId: z.string().min(1),
       note: z.string().min(1),

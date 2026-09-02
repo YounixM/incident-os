@@ -43,6 +43,8 @@ describe("registerIncidentOsTools", () => {
       additionalProperties: false,
     });
     expect(sample?.inputSchema).not.toHaveProperty("$schema");
+    const logs = payloads.find((tool) => tool.name === "search_logs");
+    expect(logs?.annotations).toEqual({ readOnlyHint: true, untrustedContentHint: true });
     const propose = payloads.find((tool) => tool.name === "propose_rollback");
     expect(propose).toBeDefined();
     expect(propose?.annotations).toEqual({ readOnlyHint: false });

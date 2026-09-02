@@ -21,6 +21,7 @@ export type IncidentOsTool = {
   inputSchema: Record<string, unknown>;
   zodSchema: z.ZodType;
   readOnly: boolean;
+  untrustedContent?: boolean;
   category: "observability" | "operations";
   execute: (input: unknown) => Promise<ToolExecuteResult>;
 };
@@ -123,6 +124,7 @@ function defineTool<T>(config: {
   description: string;
   zodSchema: z.ZodType<T>;
   readOnly: boolean;
+  untrustedContent?: boolean;
   category: IncidentOsTool["category"];
   handler: (input: T) => Promise<HandlerResult>;
 }): IncidentOsTool {
@@ -133,6 +135,7 @@ function defineTool<T>(config: {
     inputSchema: z.toJSONSchema(config.zodSchema) as Record<string, unknown>,
     zodSchema: config.zodSchema,
     readOnly: config.readOnly,
+    untrustedContent: config.untrustedContent,
     category: config.category,
     execute: async (input: unknown): Promise<ToolExecuteResult> => {
       const parsed = config.zodSchema.safeParse(input);
@@ -279,9 +282,9 @@ function summarizeIncident(
     return kpis;
   }
   if (approval.approved) {
-    return `${kpis}. Rollback to ${approval.targetVersion} is approved; call rollback_deployment now.`;
+    return `${kpis}. Rollback to ${approval.targetVersion} is approved.`;
   }
-  return `${kpis}. Rollback to ${approval.targetVersion} is waiting for Approve.`;
+  return `${kpis}. Rollback to ${approval.targetVersion} is waiting for approval.`;
 }
 
 function rollbackApprovalState(): {
@@ -289,31 +292,19 @@ function rollbackApprovalState(): {
   approved: boolean;
   service?: string;
   targetVersion?: string;
-  next: string;
 } {
   const { pendingAction, approved } = useIncidentStore.getState().approval;
   if (!pendingAction) {
     return {
       pending: false,
       approved: false,
-      next: "No rollback is waiting. Call propose_rollback first if you need one.",
-    };
-  }
-  if (approved) {
-    return {
-      pending: true,
-      approved: true,
-      service: pendingAction.params.service,
-      targetVersion: pendingAction.params.targetVersion,
-      next: `Call rollback_deployment now with service ${pendingAction.params.service} and targetVersion ${pendingAction.params.targetVersion}.`,
     };
   }
   return {
     pending: true,
-    approved: false,
+    approved,
     service: pendingAction.params.service,
     targetVersion: pendingAction.params.targetVersion,
-    next: "Waiting for the human to click Approve on the page. Do not call rollback_deployment until approval.approved is true.",
   };
 }
 
@@ -384,7 +375,7 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
     name: "get_incident",
     title: "Inspect incident",
     description:
-      "Retrieve incident context: severity, service, status, current error/latency KPIs, and rollback approval. If approval.approved is true, call rollback_deployment immediately with approval.service and approval.targetVersion.",
+      "Returns an incident's severity, status, KPIs, service, and approval state. Read-only: does not modify state, request approval, or trigger a deployment.",
     zodSchema: getIncidentSchema,
     readOnly: true,
     category: "observability",
@@ -401,7 +392,7 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
   get_service: defineTool({
     name: "get_service",
     title: "Inspect services",
-    description: "Retrieve service metadata, dependency list, and current health.",
+    description: "Returns service metadata, dependency list, and current health. Read-only.",
     zodSchema: getServiceSchema,
     readOnly: true,
     category: "observability",
@@ -415,7 +406,7 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
     name: "query_metrics",
     title: "Query metrics",
     description:
-      "Query a time series for error_rate, request_rate, p50/p95/p99 latency, or db_latency.",
+      "Returns a time series for error_rate, request_rate, p50/p95/p99 latency, or db_latency. Read-only.",
     zodSchema: queryMetricsSchema,
     readOnly: true,
     category: "observability",
@@ -428,9 +419,11 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
   search_logs: defineTool({
     name: "search_logs",
     title: "Search logs",
-    description: "Search service logs by time range, optional substring, and optional trace id.",
+    description:
+      "Returns service logs for a time range, optional substring, and optional trace id. Read-only. Log lines may include untrusted application text.",
     zodSchema: searchLogsSchema,
     readOnly: true,
+    untrustedContent: true,
     category: "observability",
     handler: async (input) => {
       const data = await observabilityService.searchLogs(input);
@@ -441,7 +434,7 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
   search_traces: defineTool({
     name: "search_traces",
     title: "Search traces",
-    description: "Search traces for a service, optionally filtered by ok/error status.",
+    description: "Returns traces for a service, optionally filtered by ok or error status. Read-only.",
     zodSchema: searchTracesSchema,
     readOnly: true,
     category: "observability",
@@ -454,7 +447,7 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
   get_trace: defineTool({
     name: "get_trace",
     title: "Inspect traces",
-    description: "Fetch a full trace and span hierarchy by id (unique prefix accepted).",
+    description: "Returns a full trace and span hierarchy by id (unique prefix accepted). Read-only.",
     zodSchema: getTraceSchema,
     readOnly: true,
     category: "observability",
@@ -467,7 +460,7 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
   get_deployments: defineTool({
     name: "get_deployments",
     title: "Inspect deployments",
-    description: "List recent deployments for a service, newest first.",
+    description: "Returns recent deployments for a service, newest first. Read-only.",
     zodSchema: getDeploymentsSchema,
     readOnly: true,
     category: "observability",
@@ -481,7 +474,7 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
     name: "compare_periods",
     title: "Compare periods",
     description:
-      "Compare baseline vs incident-window averages for a metric (delta and percentage change).",
+      "Returns baseline vs incident-window averages for a metric, including delta and percentage change. Read-only.",
     zodSchema: comparePeriodsSchema,
     readOnly: true,
     category: "observability",
@@ -495,7 +488,7 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
     name: "propose_rollback",
     title: "Propose rollback",
     description:
-      "Open a human approval dialog and wait until Approve or Cancel. Does not mutate telemetry. When the result status is approved, immediately call rollback_deployment with the same service and targetVersion. Do not wait for a chat message.",
+      "Opens a human approval dialog for rolling a service to a prior version. Does not mutate telemetry or execute the rollback.",
     zodSchema: proposeRollbackSchema,
     readOnly: false,
     category: "operations",
@@ -526,7 +519,7 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
     name: "rollback_deployment",
     title: "Rollback deployment",
     description:
-      "Roll a service back to a prior version. Call this immediately after propose_rollback returns status approved, or when get_incident.approval.approved is true. Requires a matching approved pending action; does not execute otherwise.",
+      "Rolls a service to a prior version. Requires a matching approved pending action for the same service and target version. Does not execute otherwise.",
     zodSchema: rollbackDeploymentSchema,
     readOnly: false,
     category: "operations",
@@ -554,7 +547,7 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
   add_incident_note: defineTool({
     name: "add_incident_note",
     title: "Add incident note",
-    description: "Append a note to an incident timeline. Does not require approval.",
+    description: "Appends a note to an incident timeline. Does not execute a deployment change.",
     zodSchema: addIncidentNoteSchema,
     readOnly: false,
     category: "operations",
