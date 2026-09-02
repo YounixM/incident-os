@@ -22,14 +22,16 @@ export function LogsPanel({ incidentId }: { incidentId: string }) {
   const snapshot = useTelemetrySnapshot();
   const incident = snapshot.incidents.find((row) => row.id === incidentId);
   const selectedLogTraceId = useIncidentStore((s) => s.selectedLogTraceId);
+  const logQuery = useIncidentStore((s) => s.logQuery);
+  const setLogQuery = useIncidentStore((s) => s.setLogQuery);
   const selectTrace = useIncidentStore((s) => s.selectTrace);
   const selectLogTrace = useIncidentStore((s) => s.selectLogTrace);
   const setTab = useIncidentStore((s) => s.setTab);
   const [level, setLevel] = useState<LevelFilter>(
     incidentId === PRIMARY_INCIDENT_ID ? "ERROR" : "all",
   );
-  const [query, setQuery] = useState("");
   const [scrollTop, setScrollTop] = useState(0);
+  const query = logQuery ?? "";
 
   const service = incident?.service ?? PRIMARY_SERVICE_ID;
 
@@ -72,7 +74,7 @@ export function LogsPanel({ incidentId }: { incidentId: string }) {
           query={query}
           selectedLogTraceId={selectedLogTraceId}
           onLevel={setLevel}
-          onQuery={setQuery}
+          onQuery={(value) => setLogQuery(value.length > 0 ? value : null)}
           onClearTrace={() => selectLogTrace(null)}
         />
         <EmptyState
@@ -102,7 +104,7 @@ export function LogsPanel({ incidentId }: { incidentId: string }) {
         query={query}
         selectedLogTraceId={selectedLogTraceId}
         onLevel={setLevel}
-        onQuery={setQuery}
+        onQuery={(value) => setLogQuery(value.length > 0 ? value : null)}
         onClearTrace={() => selectLogTrace(null)}
       />
       <p className="font-mono text-[10px] text-muted-foreground">

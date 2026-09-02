@@ -139,11 +139,18 @@ async function runScript(options: DemoRunOptions): Promise<void> {
   await maybeHandleInterrupt(options);
 
   const incidentResult = await runTool(
+    "get_investigation_context",
+    {},
+    options,
+  );
+  requireData(incidentResult);
+
+  const incidentLookup = await runTool(
     "get_incident",
     { incidentId: PRIMARY_INCIDENT_ID },
     options,
   );
-  requireData(incidentResult);
+  requireData(incidentLookup);
 
   const serviceResult = await runTool(
     "get_service",

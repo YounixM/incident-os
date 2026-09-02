@@ -160,6 +160,10 @@ export function ingestSuccessfulTool(
   }
 
   switch (name) {
+    case "get_investigation_context":
+      bumpProgress(1);
+      addAgentMessage("finding", result.summary);
+      break;
     case "get_incident":
       bumpProgress(1);
       addAgentMessage("finding", result.summary);

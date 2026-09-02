@@ -1,6 +1,6 @@
 # IncidentOS
 
-Agent-native observability workspace. The **page** exposes domain tools on `document.modelContext` (`query_metrics`, `search_traces`, `propose_rollback`, `rollback_deployment`, …). A human and an agent investigate a production incident together. Mutations require human approval.
+Agent-native observability workspace. The **page** exposes domain tools on `document.modelContext` (`get_investigation_context`, `query_metrics`, `search_traces`, `propose_rollback`, `rollback_deployment`, …). A human and an agent investigate a production incident together. Mutations require human approval.
 
 This is not a chatbot beside dashboards.
 
@@ -14,8 +14,8 @@ Judges should use **ChatGPT’s desktop built-in browser** ([site tools](https:/
 - Settings → Browser → Permissions → **Enable site tools**.
 - Not available in Enterprise or Edu workspaces.
 - Stay on the incident page. Tools belong to that page; navigating away unregisters them.
-- Address bar → **Site tools** → **Available site tools** (11 tools: 8 read, 3 write).
-- Read-only tools never trigger a write. Prefer site tools over clicking the dashboards.
+- Address bar → **Site tools** → **Available site tools** (12 tools: 9 read, 3 write). Start with `get_investigation_context`.
+- Read-only tools never trigger a write. Prefer site tools over clicking the dashboards. Each tool call scrolls and highlights the matching telemetry.
 
 Alternatively: **Chrome 149+** with `chrome://flags/#enable-webmcp-testing`.
 
@@ -29,7 +29,7 @@ ChatGPT reviews each tool call before the page runs it. IncidentOS still require
 
 ### In-app fallback (no WebMCP)
 
-If `typeof document.modelContext?.registerTool !== "function"`, click **Investigate with AI** and follow the scripted 60–90s path:
+If `typeof document.modelContext?.registerTool !== "function"`, the header shows **WebMCP unavailable · in-app demo**. Click **Investigate with AI** and follow the scripted 60–90s path. This is a backup, not the judged WebMCP demonstration.
 
 1. Watch real tool calls (same execute functions as WebMCP): incident, service, metrics including db_latency, deployments, traces, logs, compare, then payment-service as a negative check.
 2. Click evidence items to jump into traces / logs / deployments.

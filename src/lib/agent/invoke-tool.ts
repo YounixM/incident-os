@@ -8,12 +8,15 @@ import { waitForHumanApproval } from "./approval";
 import { nextAgentId, nextAgentTimestamp } from "./clock";
 import { ingestSuccessfulTool } from "./ingest-tools";
 import type { ApprovalDecision } from "./run-options";
+import { applyWorkspaceFocus } from "./workspace-focus";
 
 /** In-app callers increment this before going through a registered WebMCP execute. */
 let localInvokeDepth = 0;
 
 function runningSummary(tool: ToolName): string {
   switch (tool) {
+    case "get_investigation_context":
+      return "Reading page investigation context";
     case "get_incident":
       return "Loading incident context";
     case "get_service":
@@ -168,6 +171,9 @@ export async function executeIncidentTool(
       summary: result.summary,
       result: result.data,
     });
+    if (result.ok) {
+      applyWorkspaceFocus(name, input, result);
+    }
     if (result.ok && shouldIngest) {
       ingestSuccessfulTool(name, input, result);
     }

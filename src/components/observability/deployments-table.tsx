@@ -13,6 +13,7 @@ import {
 import { formatDeployTime } from "@/components/observability/format";
 import { EmptyState } from "@/components/observability/states";
 import { useTelemetrySnapshot } from "@/components/observability/use-telemetry";
+import { useIncidentStore } from "@/lib/store/use-incident-store";
 import { cn } from "@/lib/utils";
 import type { Deployment } from "@/types";
 
@@ -26,6 +27,7 @@ export function DeploymentsTable({
   limit?: number;
 }) {
   const snapshot = useTelemetrySnapshot();
+  const highlightedDeploymentId = useIncidentStore((s) => s.highlightedDeploymentId);
   const incident = incidentId
     ? snapshot.incidents.find((row) => row.id === incidentId)
     : undefined;
@@ -58,14 +60,24 @@ export function DeploymentsTable({
       </TableHeader>
       <TableBody>
         {visible.map((deployment) => (
-          <DeploymentRow key={deployment.id} deployment={deployment} />
+            <DeploymentRow
+              key={deployment.id}
+              deployment={deployment}
+              highlighted={deployment.id === highlightedDeploymentId}
+            />
         ))}
       </TableBody>
     </Table>
   );
 }
 
-function DeploymentRow({ deployment }: { deployment: Deployment }) {
+function DeploymentRow({
+  deployment,
+  highlighted,
+}: {
+  deployment: Deployment;
+  highlighted: boolean;
+}) {
   const rollback = isRollbackDeployment(deployment);
   const correlated =
     !rollback &&
@@ -73,12 +85,15 @@ function DeploymentRow({ deployment }: { deployment: Deployment }) {
     deployment.version === PRIMARY_VERSION;
   return (
     <TableRow
+      id={deployment.id}
       className={cn(
         "h-10",
         correlated && "bg-status-warning/8",
         rollback && "bg-status-healthy/8",
+        highlighted && "ring-1 ring-inset ring-status-warning/50",
       )}
       data-correlated={correlated ? "true" : undefined}
+      data-highlighted={highlighted ? "true" : undefined}
     >
       <TableCell className="font-mono text-[12px]">
         {deployment.version}

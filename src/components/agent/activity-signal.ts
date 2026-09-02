@@ -42,6 +42,8 @@ export function activitySignalLabel(tone: StatusTone, status: AgentActivity["sta
 function signalFromSuccess(activity: AgentActivity): StatusTone {
   const text = activity.summary;
   switch (activity.tool) {
+    case "get_investigation_context":
+      return "info";
     case "rollback_deployment":
       return "healthy";
     case "propose_rollback":

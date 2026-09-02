@@ -16,6 +16,7 @@ A human engineer opens a production incident and asks an AI agent to investigate
 
 The agent uses **WebMCP tools exposed by the web application** to:
 
+- Read the current page investigation context
 - Inspect incidents
 - Query metrics
 - Search logs
@@ -27,6 +28,24 @@ The agent uses **WebMCP tools exposed by the web application** to:
 - Form hypotheses
 - Gather evidence
 - Recommend remediation
+
+The strongest judged flow is external:
+
+```text
+User in ChatGPT
+        ↓
+ChatGPT browser agent (site tools)
+        ↓
+IncidentOS document.modelContext tools
+        ↓
+Synthetic telemetry service
+        ↓
+IncidentOS UI updates visibly
+        ↓
+User reviews and approves
+```
+
+The in-app panel is the shared investigation workspace. It is not the primary agent.
 
 The human can:
 
@@ -60,26 +79,26 @@ Human → Chatbot → Text response
 IncidentOS:
 
 ```text
-Human
+Human in ChatGPT
   ↓
-Agent
+ChatGPT browser agent
   ↓
-WebMCP
+IncidentOS WebMCP (document.modelContext.registerTool)
   ↓
 Application capabilities
   ↓
 Telemetry
   ↓
-Evidence
+Visible workspace update + evidence
   ↓
 Diagnosis
   ↓
-Human approval
+Human approval in IncidentOS
   ↓
 Action
 ```
 
-The distinction must be obvious during the demo.
+The distinction must be obvious during the demo: ChatGPT invokes page tools; IncidentOS is the shared workspace. Do not demo "an embedded chatbot calls internal functions" as WebMCP.
 
 ---
 
@@ -710,17 +729,18 @@ The tool names should be visible but visually secondary.
 
 # 23. WebMCP Architecture
 
-WebMCP tools are the bridge between the agent and the application.
+WebMCP tools are page-defined capabilities that a browser agent (ChatGPT site tools, or Chrome with WebMCP enabled) discovers and invokes. They execute inside IncidentOS and update the shared workspace.
 
-Architecture:
+Judged architecture:
 
 ```text
-                 AI Agent
+                 ChatGPT (or Chrome WebMCP host)
                     │
-                    │ WebMCP
+                    │ document.modelContext
                     ▼
         ┌─────────────────────────┐
-        │ IncidentOS WebMCP API   │
+        │ IncidentOS page tools   │
+        │ registerTool(...)       │
         └────────────┬────────────┘
                      │
        ┌─────────────┼──────────────┐
@@ -730,7 +750,21 @@ Architecture:
        └─────────────┼──────────────┘
                      ▼
               Synthetic Data
+                     │
+                     ▼
+         IncidentOS UI (charts, traces,
+         logs, deployments, approval)
 ```
+
+Do not implement this as:
+
+```text
+IncidentOS embedded agent → LLM SDK → internal JS functions
+```
+
+That is ordinary tool calling. The registrar must be visible as `document.modelContext.registerTool`. The in-app investigation panel is a fallback and a shared evidence surface, not the judged agent.
+
+Every tool call must visibly affect the workspace (scroll + highlight the matching telemetry). Query tools return compact summaries to the agent; the UI keeps the full series.
 
 ---
 
@@ -738,9 +772,32 @@ Architecture:
 
 ## Investigation tools
 
+### `get_investigation_context`
+
+Returns the page's current investigation state. No input. Use first when the page is already open.
+
+Output:
+
+```json
+{
+  "incidentId": "checkout-api-error-rate",
+  "service": "checkout-api",
+  "environment": "production",
+  "clock": "2026-08-31T14:32:00.000Z",
+  "timeRange": {
+    "start": "2026-08-31T12:00:00.000Z",
+    "end": "2026-08-31T14:32:00.000Z"
+  },
+  "workspaceTab": "overview",
+  "availableTools": ["get_investigation_context", "get_incident", "query_metrics"]
+}
+```
+
+Does not query telemetry series.
+
 ### `get_incident`
 
-Retrieve incident context.
+Retrieve one incident by id.
 
 Input:
 
@@ -971,10 +1028,12 @@ scroll_panel
 Good:
 
 ```text
+get_investigation_context
 search_traces
 query_metrics
 get_deployments
 compare_periods
+propose_rollback
 rollback_deployment
 ```
 
@@ -1029,6 +1088,7 @@ The agent should naturally follow approximately this sequence.
 Call:
 
 ```text
+get_investigation_context
 get_incident
 get_service
 ```
@@ -1476,24 +1536,25 @@ When clicked:
 
 # 40. Deterministic Demo Mode
 
-For hackathon reliability, support two agent modes:
+For hackathon reliability, support two agent modes. **Label them honestly.**
 
-### Real Agent Mode
+### Primary — ChatGPT / WebMCP
 
-Uses the configured LLM and actual WebMCP tool calls.
+A browser agent discovers `document.modelContext` tools and invokes them. This is the judged demonstration. Record this path in the video.
 
-### Demo Mode
+### Fallback — In-app demo
 
 Uses a deterministic investigation script that still invokes the same application tools.
 
-This ensures the demo cannot fail because of:
+The UI must distinguish this path (for example: `WebMCP unavailable · in-app demo`). Never present scripted tool activity as autonomous ChatGPT/WebMCP execution.
+
+This fallback exists so the demo cannot fail because of:
 
 - LLM latency
 - API rate limits
 - unexpected agent behavior
 - network issues
-
-The UI should not visually distinguish the two modes.
+- a judge without ChatGPT site tools
 
 ---
 
@@ -1502,26 +1563,27 @@ The UI should not visually distinguish the two modes.
 The deterministic demo should perform:
 
 ```text
-1. get_incident
-2. get_service
-3. query_metrics(error_rate)
-4. query_metrics(p95_latency)
-5. query_metrics(request_rate)
-6. get_deployments
-7. search_traces
-8. get_trace
-9. search_logs
-10. compare_periods
-11. create hypothesis
-12. present evidence
-13. wait for human challenge
-14. query request_rate again
-15. compare periods
-16. recommend rollback
-17. wait for approval
-18. rollback deployment
-19. update telemetry
-20. resolve incident
+1. get_investigation_context
+2. get_incident
+3. get_service
+4. query_metrics(error_rate)
+5. query_metrics(p95_latency)
+6. query_metrics(request_rate)
+7. get_deployments
+8. search_traces
+9. get_trace
+10. search_logs
+11. compare_periods
+12. create hypothesis
+13. present evidence
+14. wait for human challenge
+15. query request_rate again
+16. compare periods
+17. recommend rollback
+18. wait for approval
+19. rollback deployment
+20. update telemetry
+21. resolve incident
 ```
 
 ---
@@ -2666,17 +2728,18 @@ Prioritize the primary incident investigation flow above secondary features.
 
 The product is considered complete when a judge can:
 
-1. Open IncidentOS.
+1. Open IncidentOS in ChatGPT’s in-app browser (or Chrome with WebMCP).
 2. Understand the active incident within 10 seconds.
-3. Start an AI investigation.
-4. See the agent actually use application capabilities.
-5. Understand what the agent discovered.
-6. Click evidence and inspect the underlying telemetry.
-7. Challenge the agent.
-8. Watch the agent investigate the challenge.
-9. Receive a remediation recommendation.
-10. Approve the action.
-11. Watch the system recover.
+3. Ask ChatGPT to investigate using page tools (not the in-app Investigate button).
+4. See registered capabilities and real tool invocations.
+5. Watch IncidentOS charts, traces, logs, and deployments respond to those calls.
+6. Understand what the agent discovered from evidence cards.
+7. Click evidence and inspect the underlying telemetry.
+8. Challenge the agent (traffic spike).
+9. Watch the agent investigate the challenge with more tools.
+10. Receive a remediation recommendation.
+11. Approve the action in IncidentOS.
+12. Watch the system recover.
 
 The complete experience should take approximately:
 
@@ -2696,7 +2759,7 @@ The data is fake.
 
 The **agent interaction is real**.
 
-The **WebMCP integration is real**.
+The **WebMCP integration is real**: ChatGPT (or Chrome) invokes tools registered on the page.
 
 The **human-in-the-loop workflow is real**.
 

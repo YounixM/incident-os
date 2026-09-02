@@ -21,6 +21,8 @@ import {
   formatUtcHm,
 } from "@/components/observability/format";
 import { EmptyState } from "@/components/observability/states";
+import { useIncidentStore } from "@/lib/store/use-incident-store";
+import { cn } from "@/lib/utils";
 import type { MetricName, MetricResult } from "@/types";
 
 const DEPLOY_MARKER: ChartMarker = {
@@ -70,6 +72,7 @@ function metricResult(
 export function IncidentCharts({ incidentId }: { incidentId: string }) {
   const snapshot = useTelemetrySnapshot();
   const recoveryTriggered = useRecoveryTriggered();
+  const highlightedMetric = useIncidentStore((s) => s.highlightedMetric);
   const incident = snapshot.incidents.find((row) => row.id === incidentId);
   const service = incident?.service ?? PRIMARY_SERVICE_ID;
 
@@ -102,6 +105,7 @@ export function IncidentCharts({ incidentId }: { incidentId: string }) {
       <ChartBlock
         title="Error rate"
         metric="error_rate"
+        highlighted={highlightedMetric === "error_rate"}
         summary={errorSummary(series.errorRate, isPrimary, recoveryTriggered, errorNow)}
       >
         <MetricChart
@@ -117,6 +121,7 @@ export function IncidentCharts({ incidentId }: { incidentId: string }) {
       <ChartBlock
         title="p95 latency"
         metric="p95_latency"
+        highlighted={highlightedMetric === "p95_latency"}
         summary={latencySummary(series.p95, isPrimary, recoveryTriggered, p95Now)}
       >
         <MetricChart
@@ -131,6 +136,7 @@ export function IncidentCharts({ incidentId }: { incidentId: string }) {
       <ChartBlock
         title="Request rate"
         metric="request_rate"
+        highlighted={highlightedMetric === "request_rate"}
         summary={requestSummary(series.requestRate, isPrimary, reqNow)}
       >
         <MetricChart
@@ -150,18 +156,28 @@ function ChartBlock({
   title,
   metric,
   summary,
+  highlighted,
   children,
 }: {
   title: string;
   metric: MetricName;
   summary: string;
+  highlighted: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1.5">
+    <div
+      id={`metric-${metric}`}
+      data-highlighted={highlighted ? "true" : undefined}
+      className={cn(
+        "flex min-w-0 flex-col gap-1.5 rounded-md p-1.5 -m-1.5",
+        highlighted && "bg-status-warning/8 ring-1 ring-status-warning/40",
+      )}
+    >
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
           {title}
+          {highlighted ? <span className="sr-only"> Agent focused</span> : null}
         </h3>
         <span className="font-mono text-[10px] text-muted-foreground">{metric}</span>
       </div>

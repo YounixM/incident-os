@@ -1,6 +1,13 @@
 import { observabilityService, telemetryEngine, TelemetryError, withLatency } from "@/lib/observability/service";
 import { isRollbackDeployment } from "@/data/deployments";
-import { PRIMARY_SERVICE_ID, PRIMARY_VERSION, ROLLBACK_VERSION } from "@/lib/constants";
+import { SERIES_START_ISO } from "@/data/story";
+import {
+  DEMO_ENVIRONMENT,
+  DEMO_NOW_ISO,
+  PRIMARY_SERVICE_ID,
+  PRIMARY_VERSION,
+  ROLLBACK_VERSION,
+} from "@/lib/constants";
 import { useIncidentStore } from "@/lib/store/use-incident-store";
 import type {
   ComparisonResult,
@@ -8,6 +15,7 @@ import type {
   Incident,
   LogEntry,
   MetricName,
+  MetricPoint,
   MetricResult,
   RollbackParams,
   Service,
@@ -28,16 +36,65 @@ export type IncidentOsTool = {
   execute: (input: unknown) => Promise<ToolExecuteResult>;
 };
 
+export type ToolError = {
+  code: string;
+  message: string;
+  retryable: boolean;
+  suggestion: string;
+};
+
 export type ToolExecuteResult = {
   ok: boolean;
   summary: string;
   data?: unknown;
-  error?: { code: string; message: string };
+  error?: ToolError;
+};
+
+export type MetricStats = {
+  first: number;
+  last: number;
+  min: number;
+  max: number;
+  changeFactor: number | null;
+};
+
+export type CompactMetricResult = {
+  service: string;
+  metric: MetricName;
+  unit: string;
+  stats: MetricStats;
+  sample: MetricPoint[];
+};
+
+export type CompactTrace = {
+  traceId: string;
+  service: string;
+  duration: number;
+  status: Trace["status"];
+  timestamp: string;
+  dominantOperation?: string;
+  dominantShare?: number;
+};
+
+export type CompactTraceSearch = {
+  count: number;
+  status?: "ok" | "error";
+  traces: CompactTrace[];
+};
+
+export type CompactLogSearch = {
+  count: number;
+  query?: string;
+  sample: LogEntry[];
 };
 
 type HandlerOk = { summary: string; data: unknown };
-type HandlerErr = { summary: string; error: { code: string; message: string } };
+type HandlerErr = { summary: string; error: ToolError };
 type HandlerResult = HandlerOk | HandlerErr;
+
+const AGENT_SERIES_SAMPLE = 8;
+const AGENT_LOG_SAMPLE = 8;
+const AGENT_TRACE_SAMPLE = 12;
 
 const METRIC_NAMES = [
   "error_rate",
@@ -116,6 +173,55 @@ const addIncidentNoteSchema = z.object({
   note: z.string().min(1),
 });
 
+const getInvestigationContextSchema = z.object({});
+
+function toolError(code: string, message: string): ToolError {
+  switch (code) {
+    case "NOT_FOUND":
+      return {
+        code,
+        message,
+        retryable: false,
+        suggestion: "Confirm the identifier exists on the current page.",
+      };
+    case "INVALID_ARGUMENT":
+      return {
+        code,
+        message,
+        retryable: false,
+        suggestion: "Fix the input and retry.",
+      };
+    case "INVALID_ROLLBACK":
+      return {
+        code,
+        message,
+        retryable: false,
+        suggestion: "Use a prior version of the same service.",
+      };
+    case "APPROVAL_REQUIRED":
+      return {
+        code,
+        message,
+        retryable: false,
+        suggestion: "A matching approved pending action is required before this mutation.",
+      };
+    case "INTERNAL":
+      return {
+        code,
+        message,
+        retryable: true,
+        suggestion: "Retry the query.",
+      };
+    default:
+      return {
+        code,
+        message,
+        retryable: true,
+        suggestion: "Retry or inspect correlated telemetry.",
+      };
+  }
+}
+
 function isHandlerErr(result: HandlerResult): result is HandlerErr {
   return "error" in result;
 }
@@ -146,7 +252,7 @@ function defineTool<T>(config: {
         return {
           ok: false,
           summary: "Invalid tool input",
-          error: { code: "INVALID_ARGUMENT", message },
+          error: toolError("INVALID_ARGUMENT", message),
         };
       }
       try {
@@ -175,14 +281,14 @@ function telemetryFailure(err: unknown): ToolExecuteResult {
     return {
       ok: false,
       summary: err.message,
-      error: { code: err.code, message: err.message },
+      error: toolError(err.code, err.message),
     };
   }
   const message = err instanceof Error ? err.message : "Unknown error";
   return {
     ok: false,
     summary: message,
-    error: { code: "INTERNAL", message },
+    error: toolError("INTERNAL", message),
   };
 }
 
@@ -344,20 +450,115 @@ function summarizeTraces(traces: Trace[], status: "ok" | "error" | undefined): s
 }
 
 function summarizeTrace(trace: Trace): string {
+  const compact = compactTrace(trace);
+  if (compact.dominantOperation === undefined || compact.dominantShare === undefined) {
+    return `Trace ${trace.traceId} ${trace.status}, ${formatLatencyMs(trace.duration)}`;
+  }
+  if (trace.status === "error") {
+    return `Trace ${trace.traceId} failed: ${compact.dominantOperation} is ${compact.dominantShare}% of duration`;
+  }
+  return `Trace ${trace.traceId}: ${compact.dominantOperation} is ${compact.dominantShare}% of duration`;
+}
+
+function compactTrace(trace: Trace): CompactTrace {
   const dominant = trace.spans.reduce<Trace["spans"][number] | undefined>((best, span) => {
     if (!best || span.duration > best.duration) {
       return span;
     }
     return best;
   }, undefined);
-  if (!dominant || trace.duration <= 0) {
-    return `Trace ${trace.traceId} ${trace.status}, ${formatLatencyMs(trace.duration)}`;
+  const share =
+    dominant && trace.duration > 0 ? Math.round((dominant.duration / trace.duration) * 100) : undefined;
+  return {
+    traceId: trace.traceId,
+    service: trace.service,
+    duration: trace.duration,
+    status: trace.status,
+    timestamp: trace.timestamp,
+    dominantOperation: dominant?.operation,
+    dominantShare: share,
+  };
+}
+
+function compactMetricPoints(points: MetricPoint[]): MetricPoint[] {
+  if (points.length <= AGENT_SERIES_SAMPLE) {
+    return points;
   }
-  const share = Math.round((dominant.duration / trace.duration) * 100);
-  if (trace.status === "error") {
-    return `Trace ${trace.traceId} failed: ${dominant.operation} is ${share}% of duration`;
+  const picked = new Map<string, MetricPoint>();
+  function add(point: MetricPoint | undefined): void {
+    if (point) {
+      picked.set(point.timestamp, point);
+    }
   }
-  return `Trace ${trace.traceId}: ${dominant.operation} is ${share}% of duration`;
+  add(points[0]);
+  add(points[points.length - 1]);
+  const min = points.reduce((best, point) => (point.value < best.value ? point : best));
+  const max = points.reduce((best, point) => (point.value > best.value ? point : best));
+  add(min);
+  add(max);
+  const step = (points.length - 1) / (AGENT_SERIES_SAMPLE - 1);
+  for (let i = 1; i < AGENT_SERIES_SAMPLE - 1; i += 1) {
+    add(points[Math.round(i * step)]);
+  }
+  const sorted = [...picked.values()].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+  if (sorted.length <= AGENT_SERIES_SAMPLE) {
+    return sorted;
+  }
+  const kept: MetricPoint[] = [];
+  function pushUnique(point: MetricPoint | undefined): void {
+    if (!point) {
+      return;
+    }
+    if (kept[kept.length - 1]?.timestamp === point.timestamp) {
+      return;
+    }
+    kept.push(point);
+  }
+  pushUnique(sorted[0]);
+  const inner = AGENT_SERIES_SAMPLE - 2;
+  for (let i = 1; i <= inner; i += 1) {
+    pushUnique(sorted[Math.round((i * (sorted.length - 1)) / (inner + 1))]);
+  }
+  pushUnique(sorted[sorted.length - 1]);
+  return kept;
+}
+
+function metricStats(points: MetricPoint[]): MetricStats | undefined {
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (!first || !last) {
+    return undefined;
+  }
+  let min = first.value;
+  let max = first.value;
+  for (const point of points) {
+    min = Math.min(min, point.value);
+    max = Math.max(max, point.value);
+  }
+  return {
+    first: first.value,
+    last: last.value,
+    min,
+    max,
+    changeFactor: first.value === 0 ? null : last.value / first.value,
+  };
+}
+
+function compactMetricResult(service: string, result: MetricResult): CompactMetricResult {
+  const stats = metricStats(result.points) ?? {
+    first: 0,
+    last: 0,
+    min: 0,
+    max: 0,
+    changeFactor: null,
+  };
+  return {
+    service,
+    metric: result.metric,
+    unit: result.unit,
+    stats,
+    sample: compactMetricPoints(result.points),
+  };
 }
 
 export type ReleaseTransition = {
@@ -374,6 +575,28 @@ export type DeploymentsToolData = {
   lastTransition: ReleaseTransition;
   deployments: Deployment[];
 };
+
+export function tracesFromResult(data: unknown): CompactTrace[] {
+  if (Array.isArray(data)) {
+    return data.map((row) => {
+      if (row !== null && typeof row === "object" && "traceId" in row) {
+        const trace = row as Trace;
+        if ("spans" in row && Array.isArray((row as Trace).spans)) {
+          return compactTrace(trace);
+        }
+        return row as CompactTrace;
+      }
+      return undefined;
+    }).filter((row): row is CompactTrace => row !== undefined);
+  }
+  if (data !== null && typeof data === "object" && "traces" in data) {
+    const rows = (data as { traces: unknown }).traces;
+    if (Array.isArray(rows)) {
+      return tracesFromResult(rows);
+    }
+  }
+  return [];
+}
 
 export function deploymentsFromResult(data: unknown): Deployment[] {
   if (Array.isArray(data)) {
@@ -450,12 +673,60 @@ function summarizeComparison(result: ComparisonResult): string {
   return describeChange(metricLabel(result.metric), result.baselineAverage, result.incidentAverage);
 }
 
+function investigationContextData(): {
+  incidentId: string;
+  service: string;
+  environment: string;
+  clock: string;
+  timeRange: { start: string; end: string };
+  workspaceTab: string;
+  recoveryTriggered: boolean;
+  approval: ReturnType<typeof rollbackApprovalState>;
+  availableTools: ToolName[];
+} {
+  const store = useIncidentStore.getState();
+  return {
+    incidentId: store.selectedIncidentId,
+    service: PRIMARY_SERVICE_ID,
+    environment: DEMO_ENVIRONMENT,
+    clock: DEMO_NOW_ISO,
+    timeRange: { start: SERIES_START_ISO, end: DEMO_NOW_ISO },
+    workspaceTab: store.workspaceTab,
+    recoveryTriggered: store.telemetry.recoveryTriggered,
+    approval: rollbackApprovalState(),
+    availableTools: Object.keys(incidentOsTools) as ToolName[],
+  };
+}
+
 export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
+  get_investigation_context: defineTool({
+    name: "get_investigation_context",
+    title: "Inspect page context",
+    description:
+      "Returns the page's current investigation state: selected incident id, affected service, frozen clock, environment, time range, workspace tab, approval, and available capability names. Use first when the page is already open. Read-only. Does not query telemetry series.",
+    zodSchema: getInvestigationContextSchema,
+    readOnly: true,
+    category: "observability",
+    handler: async () => {
+      const incident = await observabilityService.getIncident(
+        useIncidentStore.getState().selectedIncidentId,
+      );
+      const context = investigationContextData();
+      return {
+        summary: `${incident.severity} ${incident.id} on ${incident.service} at ${context.clock}`,
+        data: {
+          ...context,
+          incident,
+        },
+      };
+    },
+  }),
+
   get_incident: defineTool({
     name: "get_incident",
     title: "Inspect incident",
     description:
-      "Returns an incident's severity, status, KPIs, service, and approval state. Read-only: does not modify state, request approval, or trigger a deployment.",
+      "Returns one incident by id: severity, status, KPIs, service, and approval state. Use when you already have an incident id. Read-only: does not modify state, request approval, or trigger a deployment.",
     zodSchema: getIncidentSchema,
     readOnly: true,
     category: "observability",
@@ -472,7 +743,8 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
   get_service: defineTool({
     name: "get_service",
     title: "Inspect services",
-    description: "Returns service metadata, dependency list, and current health. Read-only.",
+    description:
+      "Returns one service by id: metadata, dependency list, and current health. Use to inspect checkout-api or a downstream dependency. Read-only. Does not return time series.",
     zodSchema: getServiceSchema,
     readOnly: true,
     category: "observability",
@@ -486,13 +758,14 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
     name: "query_metrics",
     title: "Query metrics",
     description:
-      "Returns a time series for error_rate, request_rate, p50/p95/p99 latency, or db_latency. Read-only.",
+      "Returns compact stats and a sampled series for error_rate, request_rate, p50/p95/p99 latency, or db_latency. Use for a single metric over a time range. Read-only. Does not compare two windows.",
     zodSchema: queryMetricsSchema,
     readOnly: true,
     category: "observability",
     handler: async (input) => {
-      const data = await observabilityService.queryMetrics(input);
-      return { summary: summarizeMetrics(data, input.service), data };
+      const series = await observabilityService.queryMetrics(input);
+      const data = compactMetricResult(input.service, series);
+      return { summary: summarizeMetrics(series, input.service), data };
     },
   }),
 
@@ -500,34 +773,47 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
     name: "search_logs",
     title: "Search logs",
     description:
-      "Returns service logs for a time range, optional substring, and optional trace id. Read-only. Log lines may include untrusted application text.",
+      "Returns a count and a small sample of service logs for a time range, optional substring, and optional trace id. Use to confirm error text. Read-only. Log lines may include untrusted application text. Does not return traces.",
     zodSchema: searchLogsSchema,
     readOnly: true,
     untrustedContent: true,
     category: "observability",
     handler: async (input) => {
-      const data = await observabilityService.searchLogs(input);
-      return { summary: summarizeLogs(data, input.query), data };
+      const logs = await observabilityService.searchLogs(input);
+      const data: CompactLogSearch = {
+        count: logs.length,
+        query: input.query,
+        sample: logs.slice(0, AGENT_LOG_SAMPLE),
+      };
+      return { summary: summarizeLogs(logs, input.query), data };
     },
   }),
 
   search_traces: defineTool({
     name: "search_traces",
     title: "Search traces",
-    description: "Returns traces for a service, optionally filtered by ok or error status. Read-only.",
+    description:
+      "Returns a count and compact trace summaries for a service, optionally filtered by ok or error status. Use to find failing requests. Read-only. Does not return span trees.",
     zodSchema: searchTracesSchema,
     readOnly: true,
     category: "observability",
     handler: async (input) => {
-      const data = await observabilityService.searchTraces(input);
-      return { summary: summarizeTraces(data, input.status), data };
+      const traces = await observabilityService.searchTraces(input);
+      const limit = input.limit ?? AGENT_TRACE_SAMPLE;
+      const data: CompactTraceSearch = {
+        count: traces.length,
+        status: input.status,
+        traces: traces.slice(0, Math.min(limit, AGENT_TRACE_SAMPLE)).map(compactTrace),
+      };
+      return { summary: summarizeTraces(traces, input.status), data };
     },
   }),
 
   get_trace: defineTool({
     name: "get_trace",
     title: "Inspect traces",
-    description: "Returns a full trace and span hierarchy by id (unique prefix accepted). Read-only.",
+    description:
+      "Returns a full trace and span hierarchy by id (unique prefix accepted). Use after a search when you need span timings. Read-only.",
     zodSchema: getTraceSchema,
     readOnly: true,
     category: "observability",
@@ -541,7 +827,7 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
     name: "get_deployments",
     title: "Inspect deployments",
     description:
-      "Returns recent deployments newest first, plus activeVersion and lastTransition (deploy or rollback). Read-only.",
+      "Returns recent deployments newest first, plus activeVersion and lastTransition (deploy or rollback). Use to correlate a release with the incident window. Read-only.",
     zodSchema: getDeploymentsSchema,
     readOnly: true,
     category: "observability",
@@ -556,7 +842,7 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
     name: "compare_periods",
     title: "Compare periods",
     description:
-      "Returns baseline vs incident-window averages for a metric, including delta and percentage change. Read-only.",
+      "Returns baseline vs incident-window averages for a metric, including delta and percentage change. Use to test whether traffic or errors actually changed. Read-only. Does not return a full series.",
     zodSchema: comparePeriodsSchema,
     readOnly: true,
     category: "observability",
@@ -570,7 +856,7 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
     name: "propose_rollback",
     title: "Propose rollback",
     description:
-      "Opens a human approval dialog for rolling a service to a prior version. Does not mutate telemetry or execute the rollback.",
+      "Opens a human approval dialog for rolling a service to a prior version. Does not mutate telemetry or execute the rollback. Returns after the human approves or rejects when invoked by an external agent.",
     zodSchema: proposeRollbackSchema,
     readOnly: false,
     category: "operations",
@@ -607,12 +893,10 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
     category: "operations",
     handler: async (input) => {
       if (!isRollbackApproved(input)) {
+        const message = `rollback_deployment is not approved for ${input.service} → ${input.targetVersion}`;
         return {
           summary: `Rollback of ${input.service} to ${input.targetVersion} requires approval`,
-          error: {
-            code: "APPROVAL_REQUIRED",
-            message: `rollback_deployment is not approved for ${input.service} → ${input.targetVersion}`,
-          },
+          error: toolError("APPROVAL_REQUIRED", message),
         };
       }
       const data = await observabilityService.rollbackDeployment(input);
@@ -629,7 +913,8 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
   add_incident_note: defineTool({
     name: "add_incident_note",
     title: "Add incident note",
-    description: "Appends a note to an incident timeline. Does not execute a deployment change.",
+    description:
+      "Appends a note to an incident timeline. Use for root-cause notes. Does not execute a deployment change.",
     zodSchema: addIncidentNoteSchema,
     readOnly: false,
     category: "operations",

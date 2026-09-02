@@ -22,8 +22,13 @@ export type MetricName =
   | "p99_latency"
   | "db_latency";
 
-/** Domain tools registered on document.modelContext. `propose_rollback` is the WebMCP-safe write that opens human approval. */
+/**
+ * Domain tools registered on document.modelContext.
+ * `get_investigation_context` is page-state awareness for external agents.
+ * `propose_rollback` is the WebMCP-safe write that opens human approval.
+ */
 export type ToolName =
+  | "get_investigation_context"
   | "get_incident"
   | "get_service"
   | "query_metrics"
@@ -249,6 +254,12 @@ export interface AppState {
   workspaceTab: WorkspaceTab;
   selectedTraceId: string | null;
   selectedLogTraceId: string | null;
+  /** Metric chart the latest tool call asked the workspace to emphasize. */
+  highlightedMetric: MetricName | null;
+  /** Deployment row the latest tool call asked the workspace to emphasize. */
+  highlightedDeploymentId: string | null;
+  /** Log substring applied when an agent searches logs. */
+  logQuery: string | null;
   agent: {
     status: AgentStatus;
     messages: AgentMessage[];

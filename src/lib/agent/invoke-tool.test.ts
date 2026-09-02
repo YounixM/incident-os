@@ -9,7 +9,7 @@ import { useIncidentStore } from "@/lib/store/use-incident-store";
 import { resolveApproval, clearApprovalWaiters } from "./approval";
 import { resolveApproval as resolveApprovalFromUi } from "./controller";
 import { executeIncidentTool, invokeIncidentTool } from "./invoke-tool";
-import { COMPARE_WINDOW } from "./windows";
+import { COMPARE_WINDOW, QUERY_WINDOW } from "./windows";
 
 async function flushTool(name: keyof typeof TOOL_LATENCY_MS, work: Promise<unknown>): Promise<void> {
   await vi.advanceTimersByTimeAsync(TOOL_LATENCY_MS[name]);
@@ -194,5 +194,25 @@ describe("invokeIncidentTool", () => {
     resolveApprovalFromUi("approved");
     await vi.advanceTimersByTimeAsync(TOOL_LATENCY_MS.rollback_deployment);
     expect(useIncidentStore.getState().telemetry.recoveryTriggered).toBe(true);
+  });
+
+  it("query_metrics focuses the matching chart in the workspace", async () => {
+    const work = executeIncidentTool("query_metrics", {
+      service: PRIMARY_SERVICE_ID,
+      metric: "error_rate",
+      ...QUERY_WINDOW,
+    });
+    await flushTool("query_metrics", work);
+    const state = useIncidentStore.getState();
+    expect(state.workspaceTab).toBe("metrics");
+    expect(state.highlightedMetric).toBe("error_rate");
+  });
+
+  it("get_trace opens the representative trace", async () => {
+    const work = executeIncidentTool("get_trace", { traceId: "8fd3c21a9b4d12ef" });
+    await flushTool("get_trace", work);
+    const state = useIncidentStore.getState();
+    expect(state.workspaceTab).toBe("traces");
+    expect(state.selectedTraceId).toBe("8fd3c21a9b4d12ef");
   });
 });

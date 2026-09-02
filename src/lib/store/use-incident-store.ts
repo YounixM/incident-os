@@ -14,13 +14,24 @@ import type {
   Evidence,
   Hypothesis,
   IncidentStatus,
+  MetricName,
   PendingAction,
   WorkspaceTab,
 } from "@/types";
 import { create } from "zustand";
 
+export interface WorkspaceFocus {
+  tab: WorkspaceTab;
+  metric?: MetricName | null;
+  deploymentId?: string | null;
+  logQuery?: string | null;
+  traceId?: string | null;
+}
+
 export interface IncidentStore extends AppState {
   setTab: (tab: WorkspaceTab) => void;
+  focusWorkspace: (focus: WorkspaceFocus) => void;
+  setLogQuery: (query: string | null) => void;
   selectIncident: (id: string) => void;
   selectTrace: (id: string | null) => void;
   selectLogTrace: (id: string | null) => void;
@@ -48,6 +59,9 @@ function initialState(): AppState {
     workspaceTab: "overview",
     selectedTraceId: null,
     selectedLogTraceId: null,
+    highlightedMetric: null,
+    highlightedDeploymentId: null,
+    logQuery: null,
     agent: {
       status: "idle",
       messages: [],
@@ -70,11 +84,26 @@ export const useIncidentStore = create<IncidentStore>((set, get) => ({
 
   setTab: (tab) => set({ workspaceTab: tab }),
 
+  setLogQuery: (query) => set({ logQuery: query }),
+
+  focusWorkspace: (focus) =>
+    set({
+      workspaceTab: focus.tab,
+      highlightedMetric: focus.metric === undefined ? get().highlightedMetric : focus.metric,
+      highlightedDeploymentId:
+        focus.deploymentId === undefined ? get().highlightedDeploymentId : focus.deploymentId,
+      logQuery: focus.logQuery === undefined ? get().logQuery : focus.logQuery,
+      selectedTraceId: focus.traceId === undefined ? get().selectedTraceId : focus.traceId,
+    }),
+
   selectIncident: (id) =>
     set({
       selectedIncidentId: id,
       selectedTraceId: null,
       selectedLogTraceId: null,
+      highlightedMetric: null,
+      highlightedDeploymentId: null,
+      logQuery: null,
     }),
 
   selectTrace: (id) => set({ selectedTraceId: id }),

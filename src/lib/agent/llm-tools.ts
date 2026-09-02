@@ -14,6 +14,10 @@ const METRIC_NAMES = [
 const iso = z.string().min(1).describe("ISO-8601 UTC timestamp");
 
 export const llmTools = {
+  get_investigation_context: tool({
+    description: incidentOsTools.get_investigation_context.description,
+    inputSchema: z.object({}),
+  }),
   get_incident: tool({
     description: incidentOsTools.get_incident.description,
     inputSchema: z.object({

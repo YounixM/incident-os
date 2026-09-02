@@ -46,6 +46,7 @@ describe("runDemoInvestigation", () => {
 
     const state = useIncidentStore.getState();
     const tools = state.agent.activities.map((activity) => activity.tool);
+    expect(tools).toContain("get_investigation_context");
     expect(tools).toContain("get_incident");
     expect(tools).toContain("get_service");
     expect(tools).toContain("query_metrics");

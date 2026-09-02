@@ -33,6 +33,7 @@ export const RECOVERY = {
 } as const;
 
 export const TOOL_LATENCY_MS = {
+  get_investigation_context: 200,
   get_incident: 300,
   get_service: 350,
   query_metrics: 600,
@@ -45,6 +46,9 @@ export const TOOL_LATENCY_MS = {
   rollback_deployment: 1200,
   add_incident_note: 250,
 } as const;
+
+/** Simulated environment label returned by get_investigation_context. */
+export const DEMO_ENVIRONMENT = "production";
 
 export const SERVICE_IDS = [
   "frontend",

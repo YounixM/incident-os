@@ -259,6 +259,9 @@ describe("store / engine coupling", () => {
     expect(state.agent.hypotheses).toEqual([]);
     expect(state.agent.evidence).toEqual([]);
     expect(state.agent.progressStep).toBe(0);
+    expect(state.highlightedMetric).toBeNull();
+    expect(state.highlightedDeploymentId).toBeNull();
+    expect(state.logQuery).toBeNull();
     expect(state.telemetry.recoveryTriggered).toBe(false);
   });
 

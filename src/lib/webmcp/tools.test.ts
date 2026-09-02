@@ -8,10 +8,11 @@ import {
 } from "@/lib/constants";
 import { SERIES_START_ISO } from "@/data";
 import { telemetryEngine } from "@/lib/observability/engine";
+import { observabilityService } from "@/lib/observability/service";
 import { useIncidentStore } from "@/lib/store/use-incident-store";
-import type { ComparisonResult, Incident, ToolName, Trace } from "@/types";
+import type { ComparisonResult, Incident, ToolName } from "@/types";
 import { incidentOsTools } from "./tools";
-import type { DeploymentsToolData, ToolExecuteResult } from "./tools";
+import type { CompactMetricResult, DeploymentsToolData, ToolExecuteResult } from "./tools";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -55,17 +56,25 @@ describe("incidentOsTools", () => {
       endTime: DEMO_NOW_ISO,
     });
     expect(result.ok).toBe(true);
-    const traces = result.data as Trace[];
-    expect(traces.length).toBeGreaterThan(0);
+    const payload = result.data as { count: number; traces: { traceId: string; status: string }[] };
+    expect(payload.count).toBeGreaterThan(0);
+    expect(payload.traces.length).toBeGreaterThan(0);
+    expect(payload.traces.length).toBeLessThanOrEqual(12);
     expect(result.summary).toMatch(/failed trace/i);
-    for (const trace of traces) {
+    for (const trace of payload.traces) {
       expect(trace.status).toBe("error");
     }
-    const withDbError = traces.filter((trace) =>
+    const full = await observabilityService.searchTraces({
+      service: PRIMARY_SERVICE_ID,
+      status: "error",
+      startTime: "2026-08-31T13:50:00.000Z",
+      endTime: DEMO_NOW_ISO,
+    });
+    const withDbError = full.filter((trace) =>
       trace.spans.some((span) => span.operation === "db.query" && span.status === "error"),
     );
     expect(withDbError.length).toBeGreaterThan(0);
-    expect(withDbError.length / traces.length).toBeGreaterThan(0.8);
+    expect(withDbError.length / full.length).toBeGreaterThan(0.8);
   });
 
   it("compare_periods shows large error_rate delta vs small request_rate delta", async () => {
@@ -101,6 +110,8 @@ describe("incidentOsTools", () => {
     expect(result.error).toEqual({
       code: "APPROVAL_REQUIRED",
       message: `rollback_deployment is not approved for ${PRIMARY_SERVICE_ID} → ${ROLLBACK_VERSION}`,
+      retryable: false,
+      suggestion: "A matching approved pending action is required before this mutation.",
     });
     expect(useIncidentStore.getState().telemetry.recoveryTriggered).toBe(false);
     expect(useIncidentStore.getState().incidentStatus).toBe("investigating");
@@ -287,6 +298,48 @@ describe("incidentOsTools", () => {
     );
     expect(afterData.deployments[0]?.summary).toMatch(/Rollback v2\.31 to v2\.30/);
     expect(afterData.deployments.some((row) => row.version === "v2.31")).toBe(true);
+  });
+
+  it("get_investigation_context returns page state without requiring an incident id", async () => {
+    const result = await execute("get_investigation_context", {});
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({
+      incidentId: PRIMARY_INCIDENT_ID,
+      service: PRIMARY_SERVICE_ID,
+      environment: "production",
+      clock: DEMO_NOW_ISO,
+      timeRange: { start: SERIES_START_ISO, end: DEMO_NOW_ISO },
+    });
+    const tools = (result.data as { availableTools: string[] }).availableTools;
+    expect(tools).toContain("get_investigation_context");
+    expect(tools).toContain("query_metrics");
+    expect(tools).toContain("propose_rollback");
+  });
+
+  it("query_metrics returns compact stats instead of the full series", async () => {
+    const result = await execute("query_metrics", {
+      service: PRIMARY_SERVICE_ID,
+      metric: "error_rate",
+      startTime: SERIES_START_ISO,
+      endTime: DEMO_NOW_ISO,
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as CompactMetricResult;
+    expect(data.stats.max).toBeGreaterThan(15);
+    expect(data.stats.last).toBeGreaterThan(15);
+    expect(data.stats.changeFactor).toBeGreaterThan(20);
+    expect(data.sample.length).toBeGreaterThan(0);
+    expect(data.sample.length).toBeLessThanOrEqual(8);
+  });
+
+  it("unknown ids return structured non-retryable errors", async () => {
+    const result = await execute("get_incident", { incidentId: "not-a-real-incident" });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatchObject({
+      code: "NOT_FOUND",
+      retryable: false,
+      suggestion: "Confirm the identifier exists on the current page.",
+    });
   });
 
   it("tool descriptions do not instruct calling other tools", () => {

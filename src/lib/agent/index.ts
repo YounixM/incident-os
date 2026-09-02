@@ -7,3 +7,4 @@ export {
 export { runDemoInvestigation } from "./demo-investigation";
 export { TRAFFIC_CHALLENGE_CHIP } from "./run-options";
 export { navigateToEvidence } from "./evidence-nav";
+export { applyWorkspaceFocus } from "./workspace-focus";

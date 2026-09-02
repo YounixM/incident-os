@@ -3,6 +3,7 @@ import { incidentOsTools } from "./tools";
 import type { ToolName } from "@/types";
 
 const TOOL_ORDER = [
+  "get_investigation_context",
   "get_incident",
   "get_service",
   "query_metrics",

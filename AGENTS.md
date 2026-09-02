@@ -49,6 +49,7 @@ Deliver:
 
 - Tool definitions wrapping ObservabilityService
 - `registerIncidentOsTools()` client registrar for `document.modelContext`
+- `get_investigation_context` plus compact query payloads and structured errors
 - Capabilities catalog used by the capabilities drawer
 - Structured errors; never fabricate results
 

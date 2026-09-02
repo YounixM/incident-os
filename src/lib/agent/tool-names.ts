@@ -1,6 +1,7 @@
 import type { ToolName } from "@/types";
 
 export const TOOL_NAMES = [
+  "get_investigation_context",
   "get_incident",
   "get_service",
   "query_metrics",

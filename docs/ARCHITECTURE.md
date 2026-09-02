@@ -28,15 +28,37 @@ investigating → identified → action_pending → remediating → monitoring �
 
 One implementation, three consumers:
 
-1. In-app deterministic demo script
-2. In-app real LLM agent (AI SDK)
-3. Browser WebMCP via `document.modelContext.registerTool`
+1. Browser WebMCP via `document.modelContext.registerTool` (primary judged path: ChatGPT site tools)
+2. In-app deterministic demo script (labeled fallback when WebMCP is unavailable)
+3. Optional in-app LLM follow-ups (AI SDK)
 
-Tools represent domain capabilities (`search_traces`, `query_metrics`), never UI clicks.
+The judged story is:
+
+```text
+User in ChatGPT
+        ↓
+ChatGPT browser agent (site tools)
+        ↓
+IncidentOS document.modelContext tools
+        ↓
+ObservabilityService (synthetic telemetry)
+        ↓
+IncidentOS workspace updates (tab, highlight, evidence, approval)
+        ↓
+Human reviews and approves
+```
+
+The in-app panel is the shared investigation workspace (activity, hypotheses, evidence, approval). It is not the primary agent. If the in-app panel uses an LLM, it still goes through the same execute functions.
+
+Tools represent domain capabilities (`search_traces`, `query_metrics`, `get_investigation_context`), never UI clicks.
+
+Query tools return compact evidence to the agent (`stats` + a short `sample`). Charts keep the full local series.
+
+Every successful tool call focuses the workspace: metrics charts, deployments row, traces, or log filter.
 
 Tools query `ObservabilityService`. Do not hardcode results inside the agent. Do not invent telemetry at runtime.
 
-`rollback_deployment` must not execute until `approval.pendingAction` is approved.
+`rollback_deployment` must not execute until `approval.pendingAction` is approved. `propose_rollback` opens that dialog.
 
 ## File ownership
 
@@ -70,28 +92,29 @@ Feel: Datadog × Linear × Vercel. Not a consumer AI app.
 
 ## Demo script (must be executable via the same tools)
 
-1. get_incident
-2. get_service
-3. query_metrics(error_rate)
-4. query_metrics(p95_latency)
-5. query_metrics(db_latency)
-6. query_metrics(request_rate)
-7. get_deployments
-8. search_traces
-9. get_trace (representative failed trace; DB span ~91% of duration)
-10. search_logs (timeout / deadline exceeded)
-11. compare_periods error_rate
-12. get_service + query_metrics on payment-service (reject downstream hypothesis)
-13. create hypothesis (DB regression ~92%; payment latency rejected; traffic spike ~7%)
-14. present evidence
-15. wait for human challenge
-16. query request_rate again + compare_periods
-17. reject traffic spike; add_incident_note; propose_rollback v2.31 → v2.30
-18. wait for approval
-19. rollback_deployment
-20. recover telemetry (error 18.4% → 1.1%, p95 2.8s → 430ms)
-21. monitoring → resolved
-22. total 60–90s including simulated tool latency
+1. get_investigation_context
+2. get_incident
+3. get_service
+4. query_metrics(error_rate)
+5. query_metrics(p95_latency)
+6. query_metrics(db_latency)
+7. query_metrics(request_rate)
+8. get_deployments
+9. search_traces
+10. get_trace (representative failed trace; DB span ~91% of duration)
+11. search_logs (timeout / deadline exceeded)
+12. compare_periods error_rate
+13. get_service + query_metrics on payment-service (reject downstream hypothesis)
+14. create hypothesis (DB regression ~92%; payment latency rejected; traffic spike ~7%)
+15. present evidence
+16. wait for human challenge
+17. query request_rate again + compare_periods
+18. reject traffic spike; add_incident_note; propose_rollback v2.31 → v2.30
+19. wait for approval
+20. rollback_deployment
+21. recover telemetry (error 18.4% → 1.1%, p95 2.8s → 430ms)
+22. monitoring → resolved
+23. total 60–90s including simulated tool latency
 
 ## Dataset minimums
 
@@ -107,7 +130,13 @@ Feel: Datadog × Linear × Vercel. Not a consumer AI app.
 
 ChatGPT site tools are a subset of WebMCP: JavaScript `document.modelContext.registerTool` on the **top-level page**. No iframe registration. No declarative HTML-form tools. Support check is `typeof document.modelContext?.registerTool === "function"` (retry briefly if it appears after mount). Do not pass the React effect AbortSignal into `registerTool` — aborting it unregisters tools and ChatGPT then sees `AbortError` on `get_incident` / `propose_rollback`. Wait-for-context can abort; registered execute ignores an already-aborted host signal.
 
-Registered `execute` goes through `executeIncidentTool` so ChatGPT calls show in the activity timeline and ingest evidence. Do not require `getTools()` — ChatGPT’s host may omit it. The in-app agent uses `invokeIncidentTool`: if the host exposes `getTools`, it calls the registered tool; otherwise it executes locally.
+Registered `execute` goes through `executeIncidentTool` so ChatGPT calls show in the activity timeline, ingest evidence, and **focus the workspace**. Do not require `getTools()` — ChatGPT’s host may omit it. The in-app agent uses `invokeIncidentTool`: if the host exposes `getTools`, it calls the registered tool; otherwise it executes locally.
+
+`get_investigation_context` returns the selected incident, service, frozen clock, environment, time range, workspace tab, approval, and registered capability names. Prefer it as the first read when the page is already open.
+
+Query/search tools return compact payloads (`stats` + `sample`, or `count` + `sample`). Failures return `{ code, message, retryable, suggestion }`.
+
+AppState includes `highlightedMetric`, `highlightedDeploymentId`, and `logQuery` so the workspace can emphasize what the agent just inspected. Orchestrator extended `ToolName` with `get_investigation_context` and those focus fields for the judged ChatGPT path.
 
 `propose_rollback` is the write that opens the human approval dialog. For ChatGPT / site-tool calls it **waits until Approve or Cancel**, then returns `status: approved`. If ChatGPT never calls `propose_rollback` after ingest marks the incident **identified**, the page still opens the approval dialog (agent idle only; in-app demo still owns the traffic-challenge pause). Approving with no waiter executes `rollback_deployment`. In-app investigation still returns immediately and uses `waitForApproval`. `get_incident` includes `approval.approved` as a poll fallback if the wait is cut short. `rollback_deployment` still requires a matching approved pending action. ChatGPT also runs its own safety review before each invocation.
 
@@ -125,7 +154,7 @@ if (typeof document.modelContext?.registerTool === "function") {
 }
 ```
 
-Fallback: in-app agent still calls the same execute functions if WebMCP is unavailable.
+Fallback: in-app agent still calls the same execute functions if WebMCP is unavailable. The UI labels that path (`WebMCP unavailable · in-app demo`). Never present the scripted in-app run as ChatGPT/WebMCP execution.
 
 ## AI SDK
 
