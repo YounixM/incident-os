@@ -1,10 +1,9 @@
-import type { ToolExecuteResult } from "@/lib/webmcp/tools";
 import { PRIMARY_SERVICE_ID, PRIMARY_VERSION } from "@/lib/constants";
 import { REPRESENTATIVE_TRACE_ID } from "@/data/story";
 import { useIncidentStore } from "@/lib/store/use-incident-store";
+import { deploymentsFromResult, type ToolExecuteResult } from "@/lib/webmcp/tools";
 import type {
   ComparisonResult,
-  Deployment,
   Evidence,
   Hypothesis,
   MetricName,
@@ -194,16 +193,16 @@ export function ingestSuccessfulTool(
     }
     case "get_deployments": {
       bumpProgress(3);
-      const deployments = requireData<Deployment[]>(result);
-      const latest = deployments?.[0];
-      addAgentMessage(
-        "finding",
-        latest ? `${latest.version} deployed before the error rise.` : result.summary,
-      );
+      const deployments = deploymentsFromResult(result.data);
+      const correlated =
+        deployments.find(
+          (row) => row.service === PRIMARY_SERVICE_ID && row.version === PRIMARY_VERSION,
+        ) ?? deployments[0];
+      addAgentMessage("finding", result.summary);
       addEvidenceOnce({
         type: "deployment",
         title: `${PRIMARY_VERSION} deployed at 13:45`,
-        summary: latest?.summary ?? result.summary,
+        summary: correlated?.summary ?? result.summary,
         confidence: 0.9,
         reference: { type: "deployment", id: `deploy-${PRIMARY_SERVICE_ID}-${PRIMARY_VERSION}` },
       });

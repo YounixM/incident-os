@@ -119,6 +119,24 @@ describe("ObservabilityService queries", () => {
     expect(limited).toHaveLength(2);
   });
 
+  it("records the rollback as a history event without dropping v2.31", async () => {
+    await observabilityService.rollbackDeployment({
+      service: PRIMARY_SERVICE_ID,
+      targetVersion: ROLLBACK_VERSION,
+    });
+    await observabilityService.rollbackDeployment({
+      service: PRIMARY_SERVICE_ID,
+      targetVersion: ROLLBACK_VERSION,
+    });
+    const deploys = await observabilityService.getDeployments(PRIMARY_SERVICE_ID);
+    expect(deploys.filter((row) => row.id.includes("-rollback-"))).toHaveLength(1);
+    expect(deploys[0]?.version).toBe(ROLLBACK_VERSION);
+    expect(deploys[0]?.summary).toMatch(/Rollback v2\.31 to v2\.30/);
+    expect(deploys[0]?.timestamp).toBe(DEMO_NOW_ISO);
+    expect(deploys[1]?.version).toBe(PRIMARY_VERSION);
+    expect(deploys[1]?.timestamp).toBe("2026-08-31T13:45:00.000Z");
+  });
+
   it("comparePeriods reports percentage change", async () => {
     const result = await observabilityService.comparePeriods({
       service: PRIMARY_SERVICE_ID,
@@ -200,6 +218,9 @@ describe("rollback and reset", () => {
     const incident = await observabilityService.getIncident(PRIMARY_INCIDENT_ID);
     expect(incident.status).toBe("investigating");
     expect(incident.errorRate).toBeCloseTo(18.4, 5);
+    const deploys = await observabilityService.getDeployments(PRIMARY_SERVICE_ID);
+    expect(deploys[0]?.version).toBe(PRIMARY_VERSION);
+    expect(deploys.some((row) => row.id.includes("-rollback-"))).toBe(false);
     const last = (
       await observabilityService.queryMetrics({
         service: PRIMARY_SERVICE_ID,

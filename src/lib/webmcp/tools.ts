@@ -1,4 +1,6 @@
-import { observabilityService, TelemetryError, withLatency } from "@/lib/observability/service";
+import { observabilityService, telemetryEngine, TelemetryError, withLatency } from "@/lib/observability/service";
+import { isRollbackDeployment } from "@/data/deployments";
+import { PRIMARY_SERVICE_ID, PRIMARY_VERSION, ROLLBACK_VERSION } from "@/lib/constants";
 import { useIncidentStore } from "@/lib/store/use-incident-store";
 import type {
   ComparisonResult,
@@ -358,12 +360,90 @@ function summarizeTrace(trace: Trace): string {
   return `Trace ${trace.traceId}: ${dominant.operation} is ${share}% of duration`;
 }
 
-function summarizeDeployments(deployments: Deployment[], service: string): string {
-  const latest = deployments[0];
-  if (!latest) {
-    return `No deployments for ${service}`;
+export type ReleaseTransition = {
+  type: "rollback" | "deploy";
+  fromVersion?: string;
+  toVersion: string;
+  completedAt: string;
+  summary: string;
+};
+
+export type DeploymentsToolData = {
+  service: string;
+  activeVersion: string;
+  lastTransition: ReleaseTransition;
+  deployments: Deployment[];
+};
+
+export function deploymentsFromResult(data: unknown): Deployment[] {
+  if (Array.isArray(data)) {
+    return data as Deployment[];
   }
-  return `Latest ${service} deploy is ${latest.version} (${latest.summary})`;
+  if (data !== null && typeof data === "object" && "deployments" in data) {
+    const rows = (data as { deployments: unknown }).deployments;
+    if (Array.isArray(rows)) {
+      return rows as Deployment[];
+    }
+  }
+  return [];
+}
+
+function clockHm(iso: string): string {
+  const date = new Date(iso);
+  const hours = date.getUTCHours().toString().padStart(2, "0");
+  const minutes = date.getUTCMinutes().toString().padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function lastForwardDeploy(deployments: Deployment[]): Deployment | undefined {
+  return deployments.find((row) => !isRollbackDeployment(row));
+}
+
+function releasePayload(service: string, deployments: Deployment[]): DeploymentsToolData {
+  const forward = lastForwardDeploy(deployments);
+  const rollback = deployments.find(isRollbackDeployment);
+  const recovered = telemetryEngine.isRecoveryTriggered() && service === PRIMARY_SERVICE_ID;
+  const activeVersion = recovered
+    ? ROLLBACK_VERSION
+    : (forward?.version ?? deployments[0]?.version ?? "");
+  const lastTransition: ReleaseTransition = recovered
+    ? {
+        type: "rollback",
+        fromVersion: PRIMARY_VERSION,
+        toVersion: ROLLBACK_VERSION,
+        completedAt: rollback?.timestamp ?? "",
+        summary: rollback?.summary ?? `Rollback ${PRIMARY_VERSION} to ${ROLLBACK_VERSION}`,
+      }
+    : {
+        type: "deploy",
+        toVersion: forward?.version ?? "",
+        completedAt: forward?.timestamp ?? "",
+        summary: forward?.summary ?? "",
+      };
+  return {
+    service,
+    activeVersion,
+    lastTransition,
+    deployments,
+  };
+}
+
+function summarizeDeployments(payload: DeploymentsToolData): string {
+  const forward = lastForwardDeploy(payload.deployments);
+  if (!forward) {
+    return `No deployments for ${payload.service}`;
+  }
+  const forwardAt = clockHm(forward.timestamp);
+  switch (payload.lastTransition.type) {
+    case "rollback":
+      return `Active ${payload.service} version is ${payload.activeVersion} after rollback from ${payload.lastTransition.fromVersion}. Latest forward deploy remains ${forward.version} (${forward.summary}) at ${forwardAt}.`;
+    case "deploy":
+      return `Active ${payload.service} version is ${payload.activeVersion} (${forward.summary}). Latest forward deploy is ${forward.version} at ${forwardAt}.`;
+    default: {
+      const _exhaustive: never = payload.lastTransition.type;
+      return _exhaustive;
+    }
+  }
 }
 
 function summarizeComparison(result: ComparisonResult): string {
@@ -460,13 +540,15 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
   get_deployments: defineTool({
     name: "get_deployments",
     title: "Inspect deployments",
-    description: "Returns recent deployments for a service, newest first. Read-only.",
+    description:
+      "Returns recent deployments newest first, plus activeVersion and lastTransition (deploy or rollback). Read-only.",
     zodSchema: getDeploymentsSchema,
     readOnly: true,
     category: "observability",
     handler: async (input) => {
-      const data = await observabilityService.getDeployments(input.service, input.limit);
-      return { summary: summarizeDeployments(data, input.service), data };
+      const deployments = await observabilityService.getDeployments(input.service, input.limit);
+      const data = releasePayload(input.service, deployments);
+      return { summary: summarizeDeployments(data), data };
     },
   }),
 

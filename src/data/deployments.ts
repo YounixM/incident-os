@@ -154,6 +154,12 @@ const SPECS: DeploymentSpec[] = [
   },
 ];
 
+export const CHECKOUT_ROLLBACK_DEPLOY_ID = "deploy-checkout-api-rollback-v2.30";
+
+export function isRollbackDeployment(deployment: Deployment): boolean {
+  return deployment.id.includes("-rollback-");
+}
+
 export function buildDeployments(): Deployment[] {
   const rng = createPrng(SEED ^ 0xde9107);
   return SPECS.map((spec) => ({

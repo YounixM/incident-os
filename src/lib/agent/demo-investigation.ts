@@ -1,4 +1,4 @@
-import type { ToolExecuteResult } from "@/lib/webmcp/tools";
+import { deploymentsFromResult, type ToolExecuteResult } from "@/lib/webmcp/tools";
 import {
   PRIMARY_INCIDENT_ID,
   PRIMARY_SERVICE_ID,
@@ -10,7 +10,6 @@ import { REPRESENTATIVE_TRACE_ID } from "@/data/story";
 import { useIncidentStore } from "@/lib/store/use-incident-store";
 import type {
   ComparisonResult,
-  Deployment,
   Evidence,
   Hypothesis,
   MetricResult,
@@ -192,12 +191,13 @@ async function runScript(options: DemoRunOptions): Promise<void> {
     { service: PRIMARY_SERVICE_ID },
     options,
   );
-  const deployments = requireData<Deployment[]>(deploymentsResult);
-  const latest = deployments[0];
+  const deployments = deploymentsFromResult(deploymentsResult.data);
+  const correlated =
+    deployments.find((row) => row.version === PRIMARY_VERSION) ?? deployments[0];
   store.setProgressStep(3);
   addAgentMessage(
     "finding",
-    latest ? `${latest.version} deployed before the error rise.` : deploymentsResult.summary,
+    correlated ? `${correlated.version} deployed before the error rise.` : deploymentsResult.summary,
   );
 
   const tracesResult = await runTool(
@@ -268,7 +268,7 @@ async function runScript(options: DemoRunOptions): Promise<void> {
   const deployEvidenceId = addEvidenceItem({
     type: "deployment",
     title: `${PRIMARY_VERSION} deployed at 13:45`,
-    summary: latest?.summary ?? "Optimize checkout query",
+    summary: correlated?.summary ?? "Optimize checkout query",
     confidence: 0.9,
     reference: { type: "deployment", id: `deploy-${PRIMARY_SERVICE_ID}-${PRIMARY_VERSION}` },
   });

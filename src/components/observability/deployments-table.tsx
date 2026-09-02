@@ -1,6 +1,7 @@
 "use client";
 
 import { PRIMARY_SERVICE_ID, PRIMARY_VERSION } from "@/lib/constants";
+import { isRollbackDeployment } from "@/data/deployments";
 import {
   Table,
   TableBody,
@@ -65,16 +66,27 @@ export function DeploymentsTable({
 }
 
 function DeploymentRow({ deployment }: { deployment: Deployment }) {
+  const rollback = isRollbackDeployment(deployment);
   const correlated =
-    deployment.service === PRIMARY_SERVICE_ID && deployment.version === PRIMARY_VERSION;
+    !rollback &&
+    deployment.service === PRIMARY_SERVICE_ID &&
+    deployment.version === PRIMARY_VERSION;
   return (
     <TableRow
-      className={cn("h-10", correlated && "bg-status-warning/8")}
+      className={cn(
+        "h-10",
+        correlated && "bg-status-warning/8",
+        rollback && "bg-status-healthy/8",
+      )}
       data-correlated={correlated ? "true" : undefined}
     >
       <TableCell className="font-mono text-[12px]">
         {deployment.version}
-        {correlated ? (
+        {rollback ? (
+          <span className="ml-2 font-sans text-[10px] font-medium text-status-healthy">
+            rollback
+          </span>
+        ) : correlated ? (
           <span className="ml-2 font-sans text-[10px] font-medium text-status-warning">
             correlated
           </span>

@@ -11,7 +11,7 @@ import { telemetryEngine } from "@/lib/observability/engine";
 import { useIncidentStore } from "@/lib/store/use-incident-store";
 import type { ComparisonResult, Incident, ToolName, Trace } from "@/types";
 import { incidentOsTools } from "./tools";
-import type { ToolExecuteResult } from "./tools";
+import type { DeploymentsToolData, ToolExecuteResult } from "./tools";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -247,6 +247,46 @@ describe("incidentOsTools", () => {
     expect((approved.data as { approval: Record<string, unknown> }).approval).not.toHaveProperty(
       "next",
     );
+  });
+
+  it("get_deployments reports active v2.31 before rollback and v2.30 after", async () => {
+    const before = await execute("get_deployments", { service: PRIMARY_SERVICE_ID });
+    expect(before.ok).toBe(true);
+    expect(before.summary).toMatch(/Active checkout-api version is v2\.31/);
+    expect(before.summary).not.toMatch(/Latest checkout-api deploy is v2\.31/);
+    const beforeData = before.data as DeploymentsToolData;
+    expect(beforeData.activeVersion).toBe("v2.31");
+    expect(beforeData.lastTransition.type).toBe("deploy");
+    expect(beforeData.deployments[0]?.version).toBe("v2.31");
+
+    useIncidentStore.getState().setPendingAction({
+      id: "rollback-checkout-v230",
+      tool: "rollback_deployment",
+      title: "Rollback checkout-api to v2.30",
+      reason: "Database query regression in v2.31",
+      params: { service: PRIMARY_SERVICE_ID, targetVersion: ROLLBACK_VERSION },
+    });
+    useIncidentStore.getState().approve();
+    await execute("rollback_deployment", {
+      service: PRIMARY_SERVICE_ID,
+      targetVersion: ROLLBACK_VERSION,
+    });
+
+    const after = await execute("get_deployments", { service: PRIMARY_SERVICE_ID });
+    expect(after.ok).toBe(true);
+    expect(after.summary).toMatch(/Active checkout-api version is v2\.30 after rollback from v2\.31/);
+    expect(after.summary).toMatch(/Latest forward deploy remains v2\.31/);
+    const afterData = after.data as DeploymentsToolData;
+    expect(afterData.activeVersion).toBe("v2.30");
+    expect(afterData.lastTransition).toEqual(
+      expect.objectContaining({
+        type: "rollback",
+        fromVersion: "v2.31",
+        toVersion: "v2.30",
+      }),
+    );
+    expect(afterData.deployments[0]?.summary).toMatch(/Rollback v2\.31 to v2\.30/);
+    expect(afterData.deployments.some((row) => row.version === "v2.31")).toBe(true);
   });
 
   it("tool descriptions do not instruct calling other tools", () => {
