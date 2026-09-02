@@ -9,6 +9,7 @@ import { useIncidentStore } from "@/lib/store/use-incident-store";
 import { resolveApproval, clearApprovalWaiters } from "./approval";
 import { resolveApproval as resolveApprovalFromUi } from "./controller";
 import { executeIncidentTool, invokeIncidentTool } from "./invoke-tool";
+import { cancelRecoveryWatch } from "./recovery-watch";
 import { COMPARE_WINDOW, QUERY_WINDOW } from "./windows";
 
 async function flushTool(name: keyof typeof TOOL_LATENCY_MS, work: Promise<unknown>): Promise<void> {
@@ -22,6 +23,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cancelRecoveryWatch();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   clearApprovalWaiters();
@@ -214,5 +216,41 @@ describe("invokeIncidentTool", () => {
     const state = useIncidentStore.getState();
     expect(state.workspaceTab).toBe("traces");
     expect(state.selectedTraceId).toBe("8fd3c21a9b4d12ef");
+  });
+
+  it("does not append investigation activity after rollback", async () => {
+    useIncidentStore.getState().setPendingAction({
+      id: "rollback-checkout-v230",
+      tool: "rollback_deployment",
+      title: "Rollback checkout-api",
+      reason: "Database query regression in v2.31",
+      params: { service: PRIMARY_SERVICE_ID, targetVersion: ROLLBACK_VERSION },
+    });
+    useIncidentStore.getState().approve();
+    const rollback = executeIncidentTool("rollback_deployment", {
+      service: PRIMARY_SERVICE_ID,
+      targetVersion: ROLLBACK_VERSION,
+    });
+    await flushTool("rollback_deployment", rollback);
+    useIncidentStore.getState().focusWorkspace({ tab: "overview" });
+    const countAfterRollback = useIncidentStore.getState().agent.activities.length;
+
+    const traces = executeIncidentTool("search_traces", {
+      service: PRIMARY_SERVICE_ID,
+      status: "error",
+      ...QUERY_WINDOW,
+    });
+    await flushTool("search_traces", traces);
+    expect((await traces).ok).toBe(true);
+
+    const incident = executeIncidentTool("get_incident", { incidentId: PRIMARY_INCIDENT_ID });
+    await flushTool("get_incident", incident);
+    expect((await incident).ok).toBe(true);
+
+    const state = useIncidentStore.getState();
+    expect(state.agent.activities).toHaveLength(countAfterRollback);
+    expect(state.agent.activities.some((row) => row.tool === "search_traces")).toBe(false);
+    expect(state.workspaceTab).toBe("overview");
+    expect(state.agent.messages.some((row) => /failed traces/i.test(row.text))).toBe(false);
   });
 });

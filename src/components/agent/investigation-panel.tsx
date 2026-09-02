@@ -85,10 +85,14 @@ export function InvestigationPanel() {
     !pendingAction &&
     (trafficHypothesis?.status === "active" ||
       (question ? /traffic/i.test(question.text) : false));
+  const recovering =
+    incidentStatus === "remediating" ||
+    incidentStatus === "monitoring" ||
+    incidentStatus === "resolved";
   const findings = agent.messages.filter(
     (message) => message.kind === "status" || message.kind === "finding" || message.kind === "hypothesis" || message.kind === "action_proposal",
   );
-  const recentFindings = findings.slice(-4);
+  const recentFindings = recovering ? [] : findings.slice(-4);
   const investigationBusy =
     agent.status === "investigating" ||
     agent.status === "waiting" ||

@@ -55,12 +55,31 @@ function StatusIcon({
   }
 }
 
+/** After rollback, hide verification noise. The close is rollback + resolved. */
+export function visibleActivities(activities: AgentActivity[]): AgentActivity[] {
+  const rollbackIndex = activities.findIndex(
+    (row) => row.tool === "rollback_deployment" && row.status === "success",
+  );
+  if (rollbackIndex < 0) {
+    return activities.slice(-12);
+  }
+  const rollback = activities[rollbackIndex];
+  if (!rollback) {
+    return activities.slice(-12);
+  }
+  const resolved = activities
+    .slice(rollbackIndex + 1)
+    .filter((row) => /incident resolved/i.test(row.summary))
+    .at(-1);
+  return resolved ? [rollback, resolved] : [rollback];
+}
+
 export function ActivityTimeline({ activities }: { activities: AgentActivity[] }) {
   if (activities.length === 0) {
     return null;
   }
 
-  const recent = activities.slice(-12);
+  const recent = visibleActivities(activities);
 
   return (
     <ol className="flex flex-col gap-2" aria-live="polite" aria-label="Tool activity">

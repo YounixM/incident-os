@@ -158,6 +158,12 @@ export function ingestSuccessfulTool(
   if (!result.ok) {
     return;
   }
+  if (
+    name !== "rollback_deployment" &&
+    useIncidentStore.getState().telemetry.recoveryTriggered
+  ) {
+    return;
+  }
 
   switch (name) {
     case "get_investigation_context":

@@ -37,6 +37,9 @@ export function applyWorkspaceFocus(
     return;
   }
   const store = useIncidentStore.getState();
+  if (name !== "rollback_deployment" && store.telemetry.recoveryTriggered) {
+    return;
+  }
   switch (name) {
     case "get_investigation_context":
     case "get_incident":

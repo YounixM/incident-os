@@ -57,6 +57,11 @@ describe("recovery watch", () => {
     expect(useIncidentStore.getState().agent.messages.some((row) => row.text === "Incident resolved.")).toBe(
       true,
     );
+    expect(
+      useIncidentStore.getState().agent.activities.some(
+        (row) => row.summary === "Incident resolved" && row.status === "success",
+      ),
+    ).toBe(true);
   });
 
   it("does not restart investigation while remediating", async () => {

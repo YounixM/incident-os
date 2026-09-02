@@ -142,6 +142,13 @@ async function settleExternalProposal(
   }
 }
 
+function shouldSurfaceToolCall(name: ToolName): boolean {
+  if (name === "rollback_deployment") {
+    return true;
+  }
+  return !useIncidentStore.getState().telemetry.recoveryTriggered;
+}
+
 export async function executeIncidentTool(
   name: ToolName,
   input: unknown,
@@ -150,15 +157,18 @@ export async function executeIncidentTool(
 ): Promise<ToolExecuteResult> {
   throwIfAborted(signal);
   const store = useIncidentStore.getState();
-  const id = nextAgentId("act");
   const shouldIngest = options?.ingest ?? localInvokeDepth === 0;
-  store.addActivity({
-    id,
-    timestamp: nextAgentTimestamp(),
-    tool: name,
-    status: "running",
-    summary: runningSummary(name),
-  });
+  const surface = shouldSurfaceToolCall(name);
+  const id = nextAgentId("act");
+  if (surface) {
+    store.addActivity({
+      id,
+      timestamp: nextAgentTimestamp(),
+      tool: name,
+      status: "running",
+      summary: runningSummary(name),
+    });
+  }
   try {
     let result = await incidentOsTools[name].execute(input);
     if (name === "propose_rollback" && result.ok && shouldIngest) {
@@ -166,25 +176,29 @@ export async function executeIncidentTool(
     } else {
       throwIfAborted(signal);
     }
-    store.updateActivity(id, {
-      status: result.ok ? "success" : "error",
-      summary: result.summary,
-      result: result.data,
-    });
-    if (result.ok) {
+    if (surface) {
+      useIncidentStore.getState().updateActivity(id, {
+        status: result.ok ? "success" : "error",
+        summary: result.summary,
+        result: result.data,
+      });
+    }
+    if (result.ok && surface) {
       applyWorkspaceFocus(name, input, result);
     }
-    if (result.ok && shouldIngest) {
+    if (result.ok && shouldIngest && surface) {
       ingestSuccessfulTool(name, input, result);
     }
     return result;
   } catch (error) {
     throwIfAborted(signal);
     const message = error instanceof Error ? error.message : "Tool failed";
-    useIncidentStore.getState().updateActivity(id, {
-      status: "error",
-      summary: message,
-    });
+    if (surface) {
+      useIncidentStore.getState().updateActivity(id, {
+        status: "error",
+        summary: message,
+      });
+    }
     throw error;
   }
 }
