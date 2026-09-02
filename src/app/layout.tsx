@@ -14,6 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  applicationName: "IncidentOS",
   title: {
     default: "IncidentOS",
     template: "%s · IncidentOS",

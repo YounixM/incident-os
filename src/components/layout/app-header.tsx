@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Activity, Menu, PanelRight, X } from "lucide-react";
+import { Menu, PanelRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AppMark } from "@/components/layout/app-mark";
 import { StatusDot } from "@/components/layout/status-indicator";
 import { PRIMARY_INCIDENT_CHROME } from "@/components/layout/primary-incident";
 import { DEMO_NOW_ISO } from "@/lib/constants";
@@ -44,9 +45,7 @@ export function AppHeader({
         href="/"
         className="inline-flex items-center gap-2 rounded-md px-1 py-0.5 text-sm font-medium tracking-tight text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
       >
-        <span className="flex size-5 items-center justify-center rounded-sm border border-border bg-card">
-          <Activity className="size-3" aria-hidden="true" />
-        </span>
+        <AppMark />
         IncidentOS
       </Link>
 
