@@ -51,14 +51,23 @@ export async function runFollowUp(prompt: string, signal?: AbortSignal): Promise
         addStatus("Unknown tool requested.");
         return;
       }
-      if (payload.toolName === "propose_rollback") {
-        const result = await invokeIncidentTool(payload.toolName, payload.input, signal);
-        addStatus(result.summary);
-        useIncidentStore.getState().setAgentStatus("waiting");
-        return;
-      }
-      if (payload.toolName === "rollback_deployment") {
+      if (payload.toolName === "propose_rollback" || payload.toolName === "rollback_deployment") {
         const store = useIncidentStore.getState();
+        if (
+          store.telemetry.recoveryTriggered ||
+          store.incidentStatus === "remediating" ||
+          store.incidentStatus === "monitoring" ||
+          store.incidentStatus === "resolved"
+        ) {
+          addStatus("Rollback already applied. No further remediation is needed.");
+          return;
+        }
+        if (payload.toolName === "propose_rollback") {
+          const result = await invokeIncidentTool(payload.toolName, payload.input, signal);
+          addStatus(result.summary);
+          useIncidentStore.getState().setAgentStatus("waiting");
+          return;
+        }
         if (!store.approval.approved) {
           store.setPendingAction(buildRollbackAction());
           addStatus(

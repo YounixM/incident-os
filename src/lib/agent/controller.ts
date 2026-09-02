@@ -1,6 +1,7 @@
 import { isForceDemo } from "@/lib/fast-telemetry";
 import { useIncidentStore } from "@/lib/store/use-incident-store";
 import { isAbortError } from "./abort";
+import { addAgentMessage } from "./messages";
 import {
   clearApprovalWaiters,
   hasApprovalWaiters,
@@ -132,6 +133,11 @@ export async function submitAgentPrompt(text: string): Promise<void> {
     return;
   }
 
+  if (incidentStatus === "remediating" || incidentStatus === "monitoring") {
+    addAgentMessage("status", "Rollback already applied. Monitoring recovery.");
+    return;
+  }
+
   if (agentStatus === "investigating") {
     queueInterrupt(trimmed);
     return;
@@ -151,7 +157,7 @@ export async function submitAgentPrompt(text: string): Promise<void> {
     return;
   }
 
-  if (agentStatus === "complete" || incidentStatus === "resolved" || incidentStatus === "monitoring") {
+  if (agentStatus === "complete" || incidentStatus === "resolved") {
     await runFollowUp(trimmed, activeAbort?.signal);
   }
 }

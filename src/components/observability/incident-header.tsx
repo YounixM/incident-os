@@ -46,6 +46,11 @@ export function IncidentHeader({ incidentId }: { incidentId: string }) {
 
   const { heading, subtitle } = splitIncidentTitle(incident.title);
   const status = incident.id === PRIMARY_INCIDENT_ID ? storeStatus : incident.status;
+  const investigationBusy =
+    agentStatus === "investigating" ||
+    agentStatus === "waiting" ||
+    storeStatus === "remediating" ||
+    storeStatus === "monitoring";
 
   return (
     <section
@@ -87,7 +92,7 @@ export function IncidentHeader({ incidentId }: { incidentId: string }) {
             type="button"
             id="investigate-with-ai"
             size="sm"
-            disabled={agentStatus === "investigating" || agentStatus === "waiting"}
+            disabled={investigationBusy}
             onClick={() => {
               void startInvestigation();
             }}

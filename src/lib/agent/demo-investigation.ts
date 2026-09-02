@@ -21,6 +21,7 @@ import { nextAgentId, resetAgentClock } from "./clock";
 import { peekInterrupt, takeInterrupt } from "./interrupts";
 import { invokeIncidentTool } from "./invoke-tool";
 import { addAgentMessage } from "./messages";
+import { startRecoveryWatch } from "./recovery-watch";
 import { runRedirectInvestigation } from "./redirect";
 import { isTrafficPrompt } from "./redirect-kind";
 import {
@@ -465,17 +466,7 @@ async function runScript(options: DemoRunOptions): Promise<void> {
   store.setProgressStep(7);
   addAgentMessage("status", rollback.summary);
   addAgentMessage("finding", "Error rate 18.4% to 1.1%. p95 2.8s to 430ms.");
-
-  await sleep(1500, signal, instant);
-  throwIfAborted(signal);
-  useIncidentStore.getState().setIncidentStatus("monitoring");
-  addAgentMessage("status", "Monitoring recovery.");
-
-  await sleep(1500, signal, instant);
-  throwIfAborted(signal);
-  useIncidentStore.getState().setIncidentStatus("resolved");
-  useIncidentStore.getState().setAgentStatus("complete");
-  addAgentMessage("status", "Incident resolved.");
+  await startRecoveryWatch(signal);
 }
 
 export async function runDemoInvestigation(options: DemoRunOptions = {}): Promise<void> {

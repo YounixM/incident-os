@@ -46,7 +46,9 @@ test("investigation start, evidence jump, approval, recovery, and reset", async 
 
   await page.locator("#approval-approve").click();
   await expect(page.getByText("Incident resolved.")).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("#recovery-banner")).toContainText("Incident resolved");
   await expect(page.locator("#overview")).toContainText("1.1%");
+  await expect(page.locator("#run-investigation")).toBeEnabled();
 
   await page.locator("#reset-investigation").click();
   await expect(page.locator("#overview")).toContainText("18.4%");

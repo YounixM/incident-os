@@ -13,6 +13,7 @@ import type {
 } from "@/types";
 import { nextAgentId } from "./clock";
 import { addAgentMessage } from "./messages";
+import { startRecoveryWatch } from "./recovery-watch";
 import { buildRollbackAction } from "./run-options";
 
 function requireData<T>(result: ToolExecuteResult): T | undefined {
@@ -295,6 +296,7 @@ export function ingestSuccessfulTool(
       bumpProgress(7);
       addAgentMessage("status", result.summary);
       addAgentMessage("finding", "Error rate 18.4% to 1.1%. p95 2.8s to 430ms.");
+      void startRecoveryWatch();
       break;
     case "add_incident_note":
       openExternalRollbackApproval();

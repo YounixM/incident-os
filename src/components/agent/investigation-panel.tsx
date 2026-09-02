@@ -89,7 +89,11 @@ export function InvestigationPanel() {
     (message) => message.kind === "status" || message.kind === "finding" || message.kind === "hypothesis" || message.kind === "action_proposal",
   );
   const recentFindings = findings.slice(-4);
-  const investigationBusy = agent.status === "investigating" || agent.status === "waiting";
+  const investigationBusy =
+    agent.status === "investigating" ||
+    agent.status === "waiting" ||
+    incidentStatus === "remediating" ||
+    incidentStatus === "monitoring";
 
   return (
     <div data-slot="agent-workspace" className="flex h-full min-h-0 flex-col">

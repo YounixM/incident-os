@@ -1,6 +1,7 @@
 export { OverviewView } from "./overview-view";
 export { IncidentListView } from "./incident-list-view";
 export { IncidentHeader } from "./incident-header";
+export { IncidentRecoveryBanner } from "./incident-recovery-banner";
 export { IncidentKpis } from "./incident-kpis";
 export { IncidentCharts } from "./incident-charts";
 export { IncidentTimeline } from "./incident-timeline";

@@ -1,8 +1,7 @@
 import { PRIMARY_SERVICE_ID, PRIMARY_VERSION, ROLLBACK_VERSION } from "@/lib/constants";
-import { isFastTelemetry } from "@/lib/fast-telemetry";
 import { useIncidentStore } from "@/lib/store/use-incident-store";
 import type { ToolName } from "@/types";
-import { isAbortError, sleep, throwIfAborted } from "./abort";
+import { isAbortError, throwIfAborted } from "./abort";
 import { resetAgentClock } from "./clock";
 import {
   hasCoreInvestigationEvidence,
@@ -14,6 +13,7 @@ import { invokeIncidentTool } from "./invoke-tool";
 import { isLlmUnavailableError } from "./llm-unavailable";
 import { addAgentMessage } from "./messages";
 import { INVESTIGATION_USER_PROMPT } from "./prompts";
+import { startRecoveryWatch } from "./recovery-watch";
 import { runRedirectInvestigation } from "./redirect";
 import { isTrafficPrompt } from "./redirect-kind";
 import {
@@ -105,16 +105,7 @@ async function proposeAndExecuteRollback(options: DemoRunOptions): Promise<boole
     store.setAgentStatus("waiting");
     return false;
   }
-  const instant = options.instant || isFastTelemetry();
-  await sleep(1500, options.signal, instant);
-  throwIfAborted(options.signal);
-  useIncidentStore.getState().setIncidentStatus("monitoring");
-  addAgentMessage("status", "Monitoring recovery.");
-  await sleep(1500, options.signal, instant);
-  throwIfAborted(options.signal);
-  useIncidentStore.getState().setIncidentStatus("resolved");
-  useIncidentStore.getState().setAgentStatus("complete");
-  addAgentMessage("status", "Incident resolved.");
+  await startRecoveryWatch(options.signal);
   return true;
 }
 
@@ -142,14 +133,7 @@ async function executeToolCall(
   const result = await invokeIncidentTool(toolName, input, options.signal);
   ingestSuccessfulTool(toolName, input, result);
   if (toolName === "rollback_deployment" && result.ok) {
-    const instant = options.instant || isFastTelemetry();
-    await sleep(1500, options.signal, instant);
-    useIncidentStore.getState().setIncidentStatus("monitoring");
-    addAgentMessage("status", "Monitoring recovery.");
-    await sleep(1500, options.signal, instant);
-    useIncidentStore.getState().setIncidentStatus("resolved");
-    useIncidentStore.getState().setAgentStatus("complete");
-    addAgentMessage("status", "Incident resolved.");
+    await startRecoveryWatch(options.signal);
   }
   return result.ok ? result.data : { error: result.error };
 }

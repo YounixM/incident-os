@@ -2,6 +2,7 @@
 
 import { Check } from "lucide-react";
 import { INCIDENT_PEAK, RECOVERY } from "@/lib/constants";
+import { incidentStatusLabel } from "@/components/observability/status";
 import type { AgentStatus, Hypothesis, IncidentStatus } from "@/types";
 
 export function InvestigationSummary({
@@ -27,6 +28,7 @@ export function InvestigationSummary({
     incidentStatus === "remediating" ||
     incidentStatus === "monitoring" ||
     incidentStatus === "resolved";
+  const resolved = incidentStatus === "resolved" || agentStatus === "complete";
 
   if (!showRootCause && !showRecovery) {
     return null;
@@ -49,7 +51,7 @@ export function InvestigationSummary({
           <p className="text-xs text-muted-foreground">
             Confidence {Math.round(confirmed.confidence * 100)}% · {evidenceCount} signals
           </p>
-          <p className="text-xs">Recommended action: rollback to v2.30</p>
+          {showRecovery ? null : <p className="text-xs">Recommended action: rollback to v2.30</p>}
         </section>
       ) : null}
 
@@ -59,22 +61,25 @@ export function InvestigationSummary({
             id="recovery-heading"
             className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase"
           >
-            Incident recovering
+            {resolved ? "Incident resolved" : "Incident recovering"}
           </h3>
           <p className="text-xs">Rollback completed</p>
+          <p className="text-xs text-muted-foreground">Service checkout-api</p>
           <p className="font-mono text-xs tabular-nums">
             Error rate {INCIDENT_PEAK.errorRate}% to {RECOVERY.errorRate}%
           </p>
           <p className="font-mono text-xs tabular-nums">
             p95 {(INCIDENT_PEAK.p95LatencyMs / 1000).toFixed(1)}s to {RECOVERY.p95LatencyMs}ms
           </p>
-          {incidentStatus === "resolved" || agentStatus === "complete" ? (
+          {resolved ? (
             <p className="flex items-center gap-1.5 text-xs text-status-healthy">
               <Check className="size-3" aria-hidden="true" />
               Incident resolved
             </p>
           ) : (
-            <p className="text-xs text-muted-foreground">Status: monitoring</p>
+            <p className="text-xs text-muted-foreground">
+              Status: {incidentStatusLabel(incidentStatus)}
+            </p>
           )}
         </section>
       ) : null}

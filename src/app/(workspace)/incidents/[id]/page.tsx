@@ -8,6 +8,7 @@ import {
 import { IncidentCharts } from "@/components/observability/incident-charts";
 import { IncidentHeader } from "@/components/observability/incident-header";
 import { IncidentKpis } from "@/components/observability/incident-kpis";
+import { IncidentRecoveryBanner } from "@/components/observability/incident-recovery-banner";
 import { IncidentTimeline } from "@/components/observability/incident-timeline";
 import { DeploymentsTable } from "@/components/observability/deployments-table";
 import { LogsPanel } from "@/components/observability/logs-panel";
@@ -44,6 +45,7 @@ export default async function IncidentDetailPage({
   return (
     <WorkspacePage>
       <IncidentHeader incidentId={id} />
+      <IncidentRecoveryBanner incidentId={id} />
       <IncidentKpis incidentId={id} />
 
       <WorkspaceSlot slot="incident-charts" id="metrics" label="Metrics">
