@@ -151,9 +151,7 @@ export async function submitAgentPrompt(text: string): Promise<void> {
   if (incidentStatus === "identified" && !store.approval.pendingAction) {
     if (isTrafficPrompt(trimmed)) {
       queueInterrupt(trimmed);
-      return;
     }
-    reproposeRollback();
     return;
   }
 

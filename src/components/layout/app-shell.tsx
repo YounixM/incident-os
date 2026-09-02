@@ -22,9 +22,13 @@ function subscribeNavCollapsed(onStoreChange: () => void): () => void {
 
 function readNavCollapsed(): boolean {
   try {
-    return window.localStorage.getItem(NAV_COLLAPSED_KEY) === "1";
+    const stored = window.localStorage.getItem(NAV_COLLAPSED_KEY);
+    if (stored === null) {
+      return true;
+    }
+    return stored === "1";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -51,7 +55,7 @@ export function AppShell({
   const navCollapsed = useSyncExternalStore(
     subscribeNavCollapsed,
     readNavCollapsed,
-    () => false,
+    () => true,
   );
   const [agentOpen, setAgentOpen] = useState(false);
   const [pathForPanels, setPathForPanels] = useState(pathname);

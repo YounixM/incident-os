@@ -58,6 +58,30 @@ describe("activitySignal", () => {
     ).toBe("healthy");
   });
 
+  it("treats recovered incident reads as recovery, not a new SEV-1", () => {
+    expect(
+      activitySignal(
+        activity("get_incident", "SEV-1 checkout-api is remediating: error rate 1.1%, p95 430ms"),
+      ),
+    ).toBe("warning");
+    expect(
+      activitySignal(
+        activity("get_incident", "SEV-1 checkout-api is resolved: error rate 1.1%, p95 430ms"),
+      ),
+    ).toBe("healthy");
+    expect(
+      activitySignal(activity("search_traces", "Found 5 failed traces in the incident window")),
+    ).toBe("info");
+    expect(
+      activitySignal(
+        activity(
+          "get_trace",
+          "Trace 8fd3c21a9b4d12ef failed during the incident: HTTP POST /checkout is 100% of duration",
+        ),
+      ),
+    ).toBe("info");
+  });
+
   it("marks the correlated v2.31 deploy as a warning", () => {
     expect(
       activitySignal(

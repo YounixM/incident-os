@@ -22,10 +22,10 @@ export function IncidentRecoveryBanner({ incidentId }: { incidentId: string }) {
     if (!recoveryTriggered || incidentId !== PRIMARY_INCIDENT_ID) {
       return;
     }
-    document.getElementById("recovery-banner")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
+    const main = document.getElementById("main-content");
+    if (main) {
+      main.scrollTop = 0;
+    }
   }, [incidentId, recoveryTriggered]);
 
   if (incidentId !== PRIMARY_INCIDENT_ID || !recoveryTriggered) {

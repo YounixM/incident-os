@@ -51,8 +51,11 @@ function signalFromSuccess(activity: AgentActivity): StatusTone {
     case "add_incident_note":
       return "info";
     case "get_incident":
-      if (/resolved|after rollback/i.test(text)) {
+      if (/\bis resolved\b|\bafter rollback\b/i.test(text)) {
         return "healthy";
+      }
+      if (/\bis remediating\b|\bis monitoring\b/i.test(text)) {
+        return "warning";
       }
       if (/SEV-1|18\.4|critical/i.test(text)) {
         return "critical";
@@ -74,11 +77,17 @@ function signalFromSuccess(activity: AgentActivity): StatusTone {
       return metricChangeTone(text);
     case "search_traces":
     case "get_trace":
+      if (/incident window|during the incident/i.test(text)) {
+        return "info";
+      }
       if (/failed|error/i.test(text)) {
         return "critical";
       }
       return "info";
     case "search_logs":
+      if (/incident window/i.test(text)) {
+        return "info";
+      }
       if (/timeout|deadline|\b500\b|\berror\b/i.test(text)) {
         return "critical";
       }

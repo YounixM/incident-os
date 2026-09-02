@@ -1,6 +1,5 @@
 import { useIncidentStore } from "@/lib/store/use-incident-store";
 import { isAbortError, sleep } from "./abort";
-import { nextAgentId, nextAgentTimestamp } from "./clock";
 import { addAgentMessage } from "./messages";
 
 const RECOVERY_STEP_MS = 1500;
@@ -77,13 +76,6 @@ async function runRecovery(signal: AbortSignal): Promise<void> {
       afterSecond.setIncidentStatus("resolved");
       afterSecond.setAgentStatus("complete");
       addAgentMessage("status", "Incident resolved.");
-      afterSecond.addActivity({
-        id: nextAgentId("act"),
-        timestamp: nextAgentTimestamp(),
-        tool: "get_incident",
-        status: "success",
-        summary: "Incident resolved",
-      });
     }
   } catch (error) {
     if (isAbortError(error)) {

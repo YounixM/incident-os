@@ -141,6 +141,10 @@ describe("incidentOsTools", () => {
     expect(useIncidentStore.getState().incidentStatus).toBe("remediating");
     expect(result.summary).toMatch(/v2\.31/);
     expect(result.summary).toMatch(/v2\.30/);
+    const incident = await execute("get_incident", { incidentId: PRIMARY_INCIDENT_ID });
+    expect(incident.ok).toBe(true);
+    expect(incident.summary).toMatch(/is remediating/);
+    expect(incident.summary).toMatch(/1\.1%/);
   });
 
   it("reset via store.resetInvestigation restores investigating", async () => {

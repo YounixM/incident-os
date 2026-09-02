@@ -13,7 +13,6 @@ import type {
 import { nextAgentId } from "./clock";
 import { addAgentMessage } from "./messages";
 import { startRecoveryWatch } from "./recovery-watch";
-import { buildRollbackAction } from "./run-options";
 
 function requireData<T>(result: ToolExecuteResult): T | undefined {
   if (!result.ok || result.data === undefined) {
@@ -27,20 +26,6 @@ function bumpProgress(step: number): void {
   if (store.agent.progressStep < step) {
     store.setProgressStep(step);
   }
-}
-
-function openExternalRollbackApproval(): void {
-  const store = useIncidentStore.getState();
-  if (store.agent.status !== "idle") {
-    return;
-  }
-  if (store.approval.pendingAction || store.telemetry.recoveryTriggered) {
-    return;
-  }
-  if (store.incidentStatus !== "identified" && store.incidentStatus !== "action_pending") {
-    return;
-  }
-  store.setPendingAction(buildRollbackAction());
 }
 
 function evidenceKey(evidence: Omit<Evidence, "id">): string {
@@ -248,7 +233,6 @@ export function ingestSuccessfulTool(
     }
     case "search_logs":
       bumpProgress(5);
-      openExternalRollbackApproval();
       break;
     case "compare_periods": {
       bumpProgress(6);
@@ -265,7 +249,6 @@ export function ingestSuccessfulTool(
         });
         ensureBaseHypotheses();
         useIncidentStore.getState().setIncidentStatus("identified");
-        openExternalRollbackApproval();
       }
       if (metric === "request_rate" && compare) {
         const trafficEvidenceId = addEvidenceOnce({
@@ -293,7 +276,6 @@ export function ingestSuccessfulTool(
             return hypothesis;
           }),
         );
-        openExternalRollbackApproval();
       }
       break;
     }
@@ -308,7 +290,6 @@ export function ingestSuccessfulTool(
       void startRecoveryWatch();
       break;
     case "add_incident_note":
-      openExternalRollbackApproval();
       break;
     default: {
       const _exhaustive: never = name;

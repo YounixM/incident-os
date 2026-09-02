@@ -4,6 +4,7 @@ import { SERIES_START_ISO } from "@/data/story";
 import {
   DEMO_ENVIRONMENT,
   DEMO_NOW_ISO,
+  PRIMARY_INCIDENT_ID,
   PRIMARY_SERVICE_ID,
   PRIMARY_VERSION,
   ROLLBACK_VERSION,
@@ -385,7 +386,7 @@ function summarizeIncident(
   incident: Incident,
   approval: ReturnType<typeof rollbackApprovalState>,
 ): string {
-  const kpis = `${incident.severity} ${incident.service}: error rate ${formatCompact(incident.errorRate)}%, p95 ${formatLatencyMs(incident.p95Latency)}`;
+  const kpis = `${incident.severity} ${incident.service} is ${incident.status}: error rate ${formatCompact(incident.errorRate)}%, p95 ${formatLatencyMs(incident.p95Latency)}`;
   if (!approval.pending) {
     return kpis;
   }
@@ -433,31 +434,59 @@ function summarizeMetrics(result: MetricResult, service: string): string {
   return describeChange(metricLabel(result.metric), first.value, last.value);
 }
 
+function inRecovery(): boolean {
+  return useIncidentStore.getState().telemetry.recoveryTriggered;
+}
+
+function withIncidentWindow(text: string): string {
+  if (!inRecovery()) {
+    return text;
+  }
+  return `${text} in the incident window`;
+}
+
+function incidentWithWorkspaceStatus(incident: Incident): Incident {
+  if (incident.id !== PRIMARY_INCIDENT_ID) {
+    return incident;
+  }
+  return {
+    ...incident,
+    status: useIncidentStore.getState().incidentStatus,
+  };
+}
+
 function summarizeLogs(logs: LogEntry[], query: string | undefined): string {
   const matching = query?.trim() ? ` matching "${query.trim()}"` : "";
-  return `Found ${logs.length} log${logs.length === 1 ? "" : "s"}${matching}`;
+  return withIncidentWindow(
+    `Found ${logs.length} log${logs.length === 1 ? "" : "s"}${matching}`,
+  );
 }
 
 function summarizeTraces(traces: Trace[], status: "ok" | "error" | undefined): string {
   if (status === "error") {
-    return `Found ${traces.length} failed trace${traces.length === 1 ? "" : "s"}`;
+    return withIncidentWindow(
+      `Found ${traces.length} failed trace${traces.length === 1 ? "" : "s"}`,
+    );
   }
   if (status === "ok") {
-    return `Found ${traces.length} successful trace${traces.length === 1 ? "" : "s"}`;
+    return withIncidentWindow(
+      `Found ${traces.length} successful trace${traces.length === 1 ? "" : "s"}`,
+    );
   }
   const failed = traces.filter((trace) => trace.status === "error").length;
-  return `Found ${traces.length} traces (${failed} failed)`;
+  return withIncidentWindow(`Found ${traces.length} traces (${failed} failed)`);
 }
 
 function summarizeTrace(trace: Trace): string {
   const compact = compactTrace(trace);
+  const duringIncident = inRecovery() ? " during the incident" : "";
   if (compact.dominantOperation === undefined || compact.dominantShare === undefined) {
-    return `Trace ${trace.traceId} ${trace.status}, ${formatLatencyMs(trace.duration)}`;
+    return `Trace ${trace.traceId} ${trace.status}${duringIncident}, ${formatLatencyMs(trace.duration)}`;
   }
   if (trace.status === "error") {
-    return `Trace ${trace.traceId} failed: ${compact.dominantOperation} is ${compact.dominantShare}% of duration`;
+    return `Trace ${trace.traceId} failed${duringIncident}: ${compact.dominantOperation} is ${compact.dominantShare}% of duration`;
   }
-  return `Trace ${trace.traceId}: ${compact.dominantOperation} is ${compact.dominantShare}% of duration`;
+  return `Trace ${trace.traceId}${duringIncident}: ${compact.dominantOperation} is ${compact.dominantShare}% of duration`;
 }
 
 function compactTrace(trace: Trace): CompactTrace {
@@ -708,8 +737,10 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
     readOnly: true,
     category: "observability",
     handler: async () => {
-      const incident = await observabilityService.getIncident(
-        useIncidentStore.getState().selectedIncidentId,
+      const incident = incidentWithWorkspaceStatus(
+        await observabilityService.getIncident(
+          useIncidentStore.getState().selectedIncidentId,
+        ),
       );
       const context = investigationContextData();
       return {
@@ -731,7 +762,9 @@ export const incidentOsTools: Record<ToolName, IncidentOsTool> = {
     readOnly: true,
     category: "observability",
     handler: async (input) => {
-      const incident = await observabilityService.getIncident(input.incidentId);
+      const incident = incidentWithWorkspaceStatus(
+        await observabilityService.getIncident(input.incidentId),
+      );
       const approval = rollbackApprovalState();
       return {
         summary: summarizeIncident(incident, approval),

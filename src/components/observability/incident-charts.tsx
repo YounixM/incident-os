@@ -18,6 +18,7 @@ import {
   formatErrorRate,
   formatLatency,
   formatRequestRate,
+  formatRequestRateK,
   formatUtcHm,
 } from "@/components/observability/format";
 import { EmptyState } from "@/components/observability/states";
@@ -27,14 +28,15 @@ import type { MetricName, MetricResult } from "@/types";
 
 const DEPLOY_MARKER: ChartMarker = {
   ts: Date.parse(DEPLOY_V231_ISO),
-  label: `${PRIMARY_VERSION} ${formatUtcHm(DEPLOY_V231_ISO)}`,
+  label: PRIMARY_VERSION,
   tone: "warning",
 };
 
 const INCIDENT_MARKER: ChartMarker = {
   ts: Date.parse(INCIDENT_OPENED_ISO),
-  label: `incident ${formatUtcHm(INCIDENT_OPENED_ISO)}`,
+  label: formatUtcHm(INCIDENT_OPENED_ISO),
   tone: "critical",
+  labelPosition: "insideTopRight",
 };
 
 type SeriesBundle = {
@@ -101,7 +103,7 @@ export function IncidentCharts({ incidentId }: { incidentId: string }) {
   const reqNow = lastValue(series.requestRate);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3">
       <ChartBlock
         title="Error rate"
         metric="error_rate"
@@ -109,6 +111,7 @@ export function IncidentCharts({ incidentId }: { incidentId: string }) {
         summary={errorSummary(series.errorRate, isPrimary, recoveryTriggered, errorNow)}
       >
         <MetricChart
+          compact
           points={series.errorRate.points}
           color="var(--status-critical)"
           formatValue={formatErrorRate}
@@ -125,6 +128,7 @@ export function IncidentCharts({ incidentId }: { incidentId: string }) {
         summary={latencySummary(series.p95, isPrimary, recoveryTriggered, p95Now)}
       >
         <MetricChart
+          compact
           points={series.p95.points}
           color="var(--status-warning)"
           formatValue={formatLatency}
@@ -140,12 +144,14 @@ export function IncidentCharts({ incidentId }: { incidentId: string }) {
         summary={requestSummary(series.requestRate, isPrimary, reqNow)}
       >
         <MetricChart
+          compact
           points={series.requestRate.points}
           color="var(--status-info)"
           formatValue={formatRequestRate}
+          formatTick={formatRequestRateK}
           markers={isPrimary ? [DEPLOY_MARKER] : []}
           baseline={isPrimary ? BASELINE.requestRatePerMin : undefined}
-          baselineLabel={isPrimary ? formatRequestRate(BASELINE.requestRatePerMin) : undefined}
+          baselineLabel={isPrimary ? formatRequestRateK(BASELINE.requestRatePerMin) : undefined}
         />
       </ChartBlock>
     </div>
@@ -170,7 +176,7 @@ function ChartBlock({
       id={`metric-${metric}`}
       data-highlighted={highlighted ? "true" : undefined}
       className={cn(
-        "flex min-w-0 flex-col gap-1.5 rounded-md p-1.5 -m-1.5",
+        "flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-md",
         highlighted && "bg-status-warning/8 ring-1 ring-status-warning/40",
       )}
     >

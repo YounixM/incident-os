@@ -19,6 +19,7 @@ export interface ChartMarker {
   ts: number;
   label: string;
   tone: "warning" | "critical" | "info";
+  labelPosition?: "insideTopLeft" | "insideTopRight";
 }
 
 interface ChartRow {
@@ -73,31 +74,39 @@ export function MetricChart({
   points,
   color,
   formatValue,
+  formatTick,
   yDomain,
   markers = [],
   baseline,
   baselineLabel,
+  compact = false,
   className,
 }: {
   points: MetricPoint[];
   color: string;
   formatValue: (value: number) => string;
+  formatTick?: (value: number) => string;
   yDomain?: [number, number] | ["auto", "auto"];
   markers?: ChartMarker[];
   baseline?: number;
   baselineLabel?: string;
+  compact?: boolean;
   className?: string;
 }) {
   const data = useMemo(() => toRows(points), [points]);
+  const tickFormat = formatTick ?? formatValue;
 
   if (data.length === 0) {
     return null;
   }
 
   return (
-    <div className={cn("h-40 w-full min-w-0", className)}>
+    <div className={cn(compact ? "h-36 w-full min-w-0 overflow-hidden" : "h-40 w-full min-w-0 overflow-hidden", className)}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 18, right: 8, left: 0, bottom: 0 }}>
+        <LineChart
+          data={data}
+          margin={{ top: compact ? 14 : 18, right: compact ? 4 : 8, left: 0, bottom: 0 }}
+        >
           <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
           <XAxis
             dataKey="ts"
@@ -107,13 +116,13 @@ export function MetricChart({
             tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontFamily: "var(--font-mono)" }}
             tickLine={false}
             axisLine={{ stroke: "var(--border)" }}
-            minTickGap={28}
+            minTickGap={compact ? 40 : 28}
             height={22}
           />
           <YAxis
-            width={48}
+            width={compact ? 36 : 48}
             domain={yDomain ?? ["auto", "auto"]}
-            tickFormatter={(value: number) => formatValue(value)}
+            tickFormatter={(value: number) => tickFormat(value)}
             tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontFamily: "var(--font-mono)" }}
             tickLine={false}
             axisLine={false}
@@ -153,9 +162,9 @@ export function MetricChart({
               ifOverflow="visible"
               label={{
                 value: marker.label,
-                position: "insideTopLeft",
+                position: marker.labelPosition ?? "insideTopLeft",
                 fill: TONE_STROKE[marker.tone],
-                fontSize: 10,
+                fontSize: compact ? 9 : 10,
                 fontFamily: "var(--font-mono)",
               }}
             />

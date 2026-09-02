@@ -160,7 +160,7 @@ describe("invokeIncidentTool", () => {
     expect(useIncidentStore.getState().approval.pendingAction).toBeDefined();
   });
 
-  it("opens rollback approval when ChatGPT ingest identifies the incident", async () => {
+  it("does not open rollback approval from read tools", async () => {
     const work = executeIncidentTool("compare_periods", {
       service: PRIMARY_SERVICE_ID,
       metric: "error_rate",
@@ -168,9 +168,8 @@ describe("invokeIncidentTool", () => {
     });
     await flushTool("compare_periods", work);
     const state = useIncidentStore.getState();
-    expect(state.incidentStatus).toBe("action_pending");
-    expect(state.approval.pendingAction?.params.targetVersion).toBe(ROLLBACK_VERSION);
-    expect(state.approval.approved).toBe(false);
+    expect(state.incidentStatus).toBe("identified");
+    expect(state.approval.pendingAction).toBeUndefined();
   });
 
   it("does not auto-open approval during an in-app investigation", async () => {
@@ -218,7 +217,7 @@ describe("invokeIncidentTool", () => {
     expect(state.selectedTraceId).toBe("8fd3c21a9b4d12ef");
   });
 
-  it("does not append investigation activity after rollback", async () => {
+  it("records post-rollback verification without adding new investigation findings", async () => {
     useIncidentStore.getState().setPendingAction({
       id: "rollback-checkout-v230",
       tool: "rollback_deployment",
@@ -232,8 +231,6 @@ describe("invokeIncidentTool", () => {
       targetVersion: ROLLBACK_VERSION,
     });
     await flushTool("rollback_deployment", rollback);
-    useIncidentStore.getState().focusWorkspace({ tab: "overview" });
-    const countAfterRollback = useIncidentStore.getState().agent.activities.length;
 
     const traces = executeIncidentTool("search_traces", {
       service: PRIMARY_SERVICE_ID,
@@ -241,16 +238,18 @@ describe("invokeIncidentTool", () => {
       ...QUERY_WINDOW,
     });
     await flushTool("search_traces", traces);
-    expect((await traces).ok).toBe(true);
+    const tracesResult = await traces;
+    expect(tracesResult.ok).toBe(true);
+    expect(tracesResult.summary).toMatch(/incident window/i);
 
     const incident = executeIncidentTool("get_incident", { incidentId: PRIMARY_INCIDENT_ID });
     await flushTool("get_incident", incident);
-    expect((await incident).ok).toBe(true);
+    const incidentResult = await incident;
+    expect(incidentResult.ok).toBe(true);
+    expect(incidentResult.summary).toMatch(/is remediating|is monitoring|is resolved/);
 
     const state = useIncidentStore.getState();
-    expect(state.agent.activities).toHaveLength(countAfterRollback);
-    expect(state.agent.activities.some((row) => row.tool === "search_traces")).toBe(false);
-    expect(state.workspaceTab).toBe("overview");
+    expect(state.agent.activities.some((row) => row.tool === "search_traces")).toBe(true);
     expect(state.agent.messages.some((row) => /failed traces/i.test(row.text))).toBe(false);
   });
 });

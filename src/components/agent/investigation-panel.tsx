@@ -63,17 +63,36 @@ export function InvestigationPanel() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const lastActivity = agent.activities.at(-1);
+  const recovering =
+    incidentStatus === "remediating" ||
+    incidentStatus === "monitoring" ||
+    incidentStatus === "resolved";
 
   useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      return;
+    }
+    if (recovering) {
+      stickToBottomRef.current = false;
+      el.scrollTop = 0;
+      return;
+    }
     if (agent.activities.length === 0) {
       stickToBottomRef.current = true;
     }
-    const el = scrollRef.current;
-    if (!el || !stickToBottomRef.current) {
+    if (!stickToBottomRef.current) {
       return;
     }
     el.scrollTop = el.scrollHeight;
-  }, [agent.activities.length, lastActivity?.id, lastActivity?.status, agent.messages.length, agent.progressStep]);
+  }, [
+    recovering,
+    agent.activities.length,
+    lastActivity?.id,
+    lastActivity?.status,
+    agent.messages.length,
+    agent.progressStep,
+  ]);
 
   const lastTool =
     [...agent.activities].reverse().find((activity) => activity.tool)?.tool ?? null;
@@ -85,14 +104,10 @@ export function InvestigationPanel() {
     !pendingAction &&
     (trafficHypothesis?.status === "active" ||
       (question ? /traffic/i.test(question.text) : false));
-  const recovering =
-    incidentStatus === "remediating" ||
-    incidentStatus === "monitoring" ||
-    incidentStatus === "resolved";
   const findings = agent.messages.filter(
     (message) => message.kind === "status" || message.kind === "finding" || message.kind === "hypothesis" || message.kind === "action_proposal",
   );
-  const recentFindings = recovering ? [] : findings.slice(-4);
+  const recentFindings = findings.slice(-4);
   const investigationBusy =
     agent.status === "investigating" ||
     agent.status === "waiting" ||
@@ -119,10 +134,26 @@ export function InvestigationPanel() {
         ref={scrollRef}
         className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3"
         onScroll={(event) => {
+          if (recovering) {
+            stickToBottomRef.current = false;
+            return;
+          }
           const el = event.currentTarget;
           stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
         }}
       >
+        {recovering ? (
+          <>
+            <InvestigationSummary
+              hypotheses={agent.hypotheses}
+              evidenceCount={agent.evidence.length}
+              incidentStatus={incidentStatus}
+              agentStatus={agent.status}
+            />
+            <div className="h-px bg-border" role="presentation" />
+          </>
+        ) : null}
+
         <section aria-labelledby="agent-progress-heading">
           <h3
             id="agent-progress-heading"
@@ -203,12 +234,14 @@ export function InvestigationPanel() {
           </section>
         ) : null}
 
-        <InvestigationSummary
-          hypotheses={agent.hypotheses}
-          evidenceCount={agent.evidence.length}
-          incidentStatus={incidentStatus}
-          agentStatus={agent.status}
-        />
+        {recovering ? null : (
+          <InvestigationSummary
+            hypotheses={agent.hypotheses}
+            evidenceCount={agent.evidence.length}
+            incidentStatus={incidentStatus}
+            agentStatus={agent.status}
+          />
+        )}
 
         <section aria-labelledby="agent-activity-heading">
           <h3

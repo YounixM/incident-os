@@ -142,13 +142,6 @@ async function settleExternalProposal(
   }
 }
 
-function shouldSurfaceToolCall(name: ToolName): boolean {
-  if (name === "rollback_deployment") {
-    return true;
-  }
-  return !useIncidentStore.getState().telemetry.recoveryTriggered;
-}
-
 export async function executeIncidentTool(
   name: ToolName,
   input: unknown,
@@ -158,17 +151,14 @@ export async function executeIncidentTool(
   throwIfAborted(signal);
   const store = useIncidentStore.getState();
   const shouldIngest = options?.ingest ?? localInvokeDepth === 0;
-  const surface = shouldSurfaceToolCall(name);
   const id = nextAgentId("act");
-  if (surface) {
-    store.addActivity({
-      id,
-      timestamp: nextAgentTimestamp(),
-      tool: name,
-      status: "running",
-      summary: runningSummary(name),
-    });
-  }
+  store.addActivity({
+    id,
+    timestamp: nextAgentTimestamp(),
+    tool: name,
+    status: "running",
+    summary: runningSummary(name),
+  });
   try {
     let result = await incidentOsTools[name].execute(input);
     if (name === "propose_rollback" && result.ok && shouldIngest) {
@@ -176,29 +166,25 @@ export async function executeIncidentTool(
     } else {
       throwIfAborted(signal);
     }
-    if (surface) {
-      useIncidentStore.getState().updateActivity(id, {
-        status: result.ok ? "success" : "error",
-        summary: result.summary,
-        result: result.data,
-      });
-    }
-    if (result.ok && surface) {
+    store.updateActivity(id, {
+      status: result.ok ? "success" : "error",
+      summary: result.summary,
+      result: result.data,
+    });
+    if (result.ok) {
       applyWorkspaceFocus(name, input, result);
     }
-    if (result.ok && shouldIngest && surface) {
+    if (result.ok && shouldIngest) {
       ingestSuccessfulTool(name, input, result);
     }
     return result;
   } catch (error) {
     throwIfAborted(signal);
     const message = error instanceof Error ? error.message : "Tool failed";
-    if (surface) {
-      useIncidentStore.getState().updateActivity(id, {
-        status: "error",
-        summary: message,
-      });
-    }
+    useIncidentStore.getState().updateActivity(id, {
+      status: "error",
+      summary: message,
+    });
     throw error;
   }
 }

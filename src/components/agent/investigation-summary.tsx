@@ -36,25 +36,6 @@ export function InvestigationSummary({
 
   return (
     <div className="flex flex-col gap-3">
-      {showRootCause && confirmed ? (
-        <section aria-labelledby="root-cause-heading" className="flex flex-col gap-1.5">
-          <h3
-            id="root-cause-heading"
-            className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase"
-          >
-            Root cause identified
-          </h3>
-          <p className="text-sm font-medium leading-tight">{confirmed.title}</p>
-          <p className="text-xs text-muted-foreground">
-            Introduced in checkout-api v2.31
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Confidence {Math.round(confirmed.confidence * 100)}% · {evidenceCount} signals
-          </p>
-          {showRecovery ? null : <p className="text-xs">Recommended action: rollback to v2.30</p>}
-        </section>
-      ) : null}
-
       {showRecovery ? (
         <section aria-labelledby="recovery-heading" className="flex flex-col gap-1.5">
           <h3
@@ -81,6 +62,25 @@ export function InvestigationSummary({
               Status: {incidentStatusLabel(incidentStatus)}
             </p>
           )}
+        </section>
+      ) : null}
+
+      {showRootCause && confirmed ? (
+        <section aria-labelledby="root-cause-heading" className="flex flex-col gap-1.5">
+          <h3
+            id="root-cause-heading"
+            className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase"
+          >
+            Root cause identified
+          </h3>
+          <p className="text-sm font-medium leading-tight">{confirmed.title}</p>
+          <p className="text-xs text-muted-foreground">
+            Introduced in checkout-api v2.31
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Confidence {Math.round(confirmed.confidence * 100)}% · {evidenceCount} signals
+          </p>
+          {showRecovery ? null : <p className="text-xs">Recommended action: rollback to v2.30</p>}
         </section>
       ) : null}
     </div>
