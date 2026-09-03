@@ -63,7 +63,7 @@ test("a payment redirect during the traffic pause still resumes the investigatio
   await expect(page.locator("#traffic-challenge-chip")).toBeVisible({ timeout: 60_000 });
 
   await page.locator("#agent-prompt").fill("investigate payment-service instead");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.locator("#agent-prompt").press("Enter");
   await expect(page.getByText("Following up: investigate payment-service instead")).toBeVisible({
     timeout: 20_000,
   });
